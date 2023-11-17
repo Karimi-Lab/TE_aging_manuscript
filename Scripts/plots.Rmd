@@ -1,0 +1,1862 @@
+---
+title: "Aging TE correlations"
+author: "Nogayhan Seymen"
+date: "08/06/2023"
+output: 
+  html_document:
+    code_folding: hide
+    highlight: zenburn
+    number_sections: yes
+    theme: yeti
+    toc: yes
+---
+
+```{=html}
+<style type="text/css">
+.main-container {
+  max-width: 90%;
+  margin-left: 150px;
+  margin-right: auto;
+}
+</style>
+```
+
+```{r setup, include=FALSE}
+library(ComplexHeatmap)
+library(ggsci)
+library(readxl)
+library(ggplot2)
+library(ggpmisc)
+library(ggpubr)
+library(ggrepel)
+library(dplyr)
+library(PerformanceAnalytics)
+library(pals)
+library(tidyr)
+library(grid)
+library(gridExtra)
+library(plyr)
+library(GGally)
+library(GSVA)
+library(limma)
+library(GSEABase)
+library(org.Hs.eg.db)
+library(fmsb)
+```
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+# Define TE types for annotation
+te_anno <- data.frame(Feature = c("LTR", "LINE", "SINE", 
+                                                "L1", "Alu", 
+                                                "ERV1", "ERVL", "L2", "ERVL-MaLR", 
+                                                "MIR", "ERVK"),
+                      Type = c(rep("Class", 3), rep("Family", 8)))
+
+te_anno_colors <- list(Type = c("Class" = "#9B23E8", "Family" = "#F7730C"))
+
+# Function for reading all excel sheets
+read_excel_allsheets <- function(filename, tibble = FALSE) {
+  sheets <- readxl::excel_sheets(filename)
+  x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
+  if(!tibble) x <- lapply(x, as.data.frame)
+  names(x) <- sheets
+  x
+}
+gene_sets <- read_excel_allsheets("../Data/gene_signatures_230607.xlsx")
+lengths <- unlist(lapply(gene_sets, FUN = function(x){lapply(x, FUN = function(y){length(y[!is.na(y)])})}))
+
+# Initiate list for age histogram
+age_list <- list()
+
+# Initiate data frame for correlation bar charts
+r_bars <- data.frame()
+p_bars <- data.frame()
+r_bars_fam <- data.frame()
+p_bars_fam <- data.frame()
+
+# Function for creating correlation matrices along with p-vals
+corrTabs <- function(mat1, mat2){
+  inf_df <- cbind(mat1, mat2)
+  inf_df <- mutate_all(inf_df, function(x)as.numeric(x))
+  corMat <- list()
+  corMat$P <- data.frame()
+  corMat$r <- data.frame()
+  mat1_feats <- colnames(mat1)
+  mat2_feats <- colnames(mat2)
+  
+  # change Age from column to row
+  mat1_feats <- mat1_feats[mat1_feats != "Age"]
+  mat2_feats <- c(mat2_feats, "Age")
+  
+  inf_df <- t(inf_df)
+  
+  for (feat1 in mat1_feats){
+    for (feat2 in mat2_feats) {
+      corMat$P[feat1, feat2] <- tryCatch({
+        round(cor.test(as.numeric(inf_df[feat1,]), as.numeric(inf_df[feat2,]), method = "pearson")$p.value, 3)
+      },
+        error = function(err) {return(NA)}
+      )
+      
+      corMat$r[feat1, feat2] <- tryCatch({
+        round(cor.test(as.numeric(inf_df[feat1,]), as.numeric(inf_df[feat2,]), method = "pearson")$estimate, 2)
+      },
+        error = function(err) {return(NA)}
+      )
+    }
+  }
+  return(corMat)
+}
+
+# Function for creating correlation matrices along with p-vals all vs. all
+corrTabs.all <- function(mat, sgn){
+  sgn_df <- dplyr::bind_rows(sgn)
+  sgn_df <- t(sgn_df)
+  colnames(sgn_df) <- sgn_df[1,]
+  sgn_df <- sgn_df[-1,]
+  
+  inf_df <- cbind(mat, sgn_df)
+  inf_df <- mutate_all(inf_df, function(x)as.numeric(x))
+  corMat <- list()
+  corMat$P <- data.frame()
+  corMat$r <- data.frame()
+  
+  inf_df <- t(inf_df)
+  
+  for (feat1 in rownames(inf_df)){
+    for (feat2 in rownames(inf_df)) {
+      corMat$P[feat1, feat2] <- tryCatch({
+        round(cor.test(as.numeric(inf_df[feat1,]), as.numeric(inf_df[feat2,]), method = "pearson")$p.value, 3)
+      },
+        error = function(err) {return(NA)}
+      )
+      
+      corMat$r[feat1, feat2] <- tryCatch({
+        round(cor.test(as.numeric(inf_df[feat1,]), as.numeric(inf_df[feat2,]), method = "pearson")$estimate, 2)
+      },
+        error = function(err) {return(NA)}
+      )
+    }
+  }
+  return(corMat)
+}
+
+te.corr.all <- function(cohort, type = "all"){
+  # Read TE expressions
+  te_exp <- readRDS(paste0("../Data/TE_Expression/", cohort, "_TEs_pData.rds"))
+  # Read signature scores
+  sign_scores <- read_excel_allsheets(paste0("../Results/", cohort, "_230607.xlsx"))
+  # Define signature scores
+  sign_colors <- list(`Gene Set` = c(setNames(pals::alphabet(n = length(names(sign_scores))+1), 
+                          c("Age",names(sign_scores)))))
+  
+  # Add age info to age list
+  # age_list[[cohort]] <<- te_exp$Age
+
+  features <- c()
+
+  corMat <- corrTabs.all(te_exp %>% dplyr::select("Age", "LTR", "LINE", "SINE",
+                                              "L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", 
+                                              "MIR", "ERVK"), 
+                     sign_scores)
+  # Convert NA's to insignificant which would show white in the plot
+  # If there is one column, complete.cases removes column name
+  corMat$P[is.na(corMat$P)] <- 1
+  corMat$r[is.na(corMat$r)] <- 0
+  
+  features <- c(features, colnames(corMat$P))
+  types <- c("Age", rep("Class", 3), rep("Family", 8), unlist(lapply(names(sign_scores), FUN = function(x){rep(x, dim(sign_scores[[x]])[1])})))
+  
+  # Remove duplicate Age annotations and fix gene set
+  anno_df <- data.frame(Feature = features, Type = types)
+
+  te.plot.all(corMat$P, corMat$r, anno_df, sign_colors, sign_scores, te_exp$Age, type, cohort)
+}
+
+col_fun = circlize::colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
+
+te.corr <- function(cohort){
+  # Read TE expressions
+  te_exp <- readRDS(paste0("../Data/TE_Expression/", cohort, "_TEs_pData.rds"))
+  # Read signature scores
+  sign_scores <- read_excel_allsheets(paste0("../Results/", cohort, "_230607.xlsx"))
+  # Define signature scores
+  sign_colors <- list(`Gene Set` = c(setNames(pals::alphabet(n = length(names(sign_scores))+1), 
+                          c("Age",names(sign_scores)))))
+  
+  # Add age info to age list
+  age_list[[cohort]] <<- te_exp$Age
+
+  p_list <- list()
+  r_list <- list()
+  features <- c()
+  types <- c()
+
+  for (s in names(sign_scores)){
+    # Assign column 1 as row names and remove it
+    rownames(sign_scores[[s]]) <- sign_scores[[s]][,1]
+    sign_scores[[s]] <- sign_scores[[s]][,-1]
+    
+    # Calculate correlation
+    corMat <- corrTabs(te_exp %>% dplyr::select("Age", "LTR", "LINE", "SINE",
+                                                "L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", 
+                                                "MIR", "ERVK"), 
+                       t(sign_scores[[s]]))
+    # Convert NA's to insignificant which would show white in the plot
+    # If there is one column, complete.cases removes column name
+    corMat$P[is.na(corMat$P)] <- 1
+    corMat$r[is.na(corMat$r)] <- 0
+    
+    p_list[[s]] <- corMat$P
+    r_list[[s]] <- corMat$r
+    
+    features <- c(features, colnames(corMat$P))
+    types <- c(types, rep(s, length(colnames(corMat$P))))
+  }
+  
+  p_corr <- dplyr::bind_cols(p_list)
+  r_corr <- dplyr::bind_cols(r_list)
+  
+  # Remove duplicate Age columns
+  p_corr <- p_corr %>%
+    dplyr::rename(Age = colnames(p_corr)[grepl(pattern = "Age", colnames(p_corr))][1]) %>%
+    dplyr::select(!colnames(p_corr)[grepl(pattern = "Age", colnames(p_corr))][-1])
+    
+  r_corr <- r_corr %>%
+    dplyr::rename(Age = colnames(r_corr)[grepl(pattern = "Age", colnames(r_corr))][1]) %>%
+    dplyr::select(!colnames(r_corr)[grepl(pattern = "Age", colnames(r_corr))][-1])
+
+  # Remove duplicate Age annotations and fix gene set
+  anno_df <- data.frame(Feature = features, Type = types)
+  anno_df <- anno_df[-which(grepl("Age", anno_df$Feature))[-1],]
+  anno_df[anno_df$Feature == "Age", "Type"] <- "Age"
+  # add Age
+  ##### Change if order of gene sets change !!!!!!!!!!!!
+  anno_df$Lengths <- append(lengths, 1, after = 10)
+
+  te.plot(p_corr, r_corr, anno_df, sign_colors, sign_scores, te_exp$Age)
+  remove(p_corr)
+  remove(r_corr)
+}
+ 
+te.plot <- function(ps, rs, anno, sign_colors, sign_scores, ages){
+  sign_df <- dplyr::bind_rows(sign_scores, .id = '')
+  # Add age row
+  sign_df["Age",] <- c("Age", ages)
+  # Remove NA and duplicate rows
+  # sign_df <- sign_df[complete.cases(sign_df),]
+  # sign_df <- sign_df[!duplicated(sign_df),]
+  colnames(sign_df)[1:2] <- c("Type", "Gene_Set")
+  # sign_df <- sign_df[,-1]
+  sign_df <- transform(sign_df, SD=apply(sign_df,1, sd, na.rm = TRUE))
+  sign_df["Age","SD"] <- sign_df["Age","SD"]/100
+  
+  sign_df_alt <- sign_df[match(anno$Feature, rownames(sign_df)),]
+  
+  alt_anno <- data.frame(Type = t(te_anno$Type)[order(match(te_anno$Feature,rownames(rs)))])
+  rownames(alt_anno) <- rownames(rs)
+  
+  p <- ComplexHeatmap::Heatmap(t(rs), col = col_fun,
+                               rect_gp = gpar(col = "white", lwd = 2),
+                               cell_fun = function(j, i, x, y, width, height, fill) {
+                                  if(t(ps)[i, j] < 0.05) {
+                                    grid.text("*", x, y)
+                                    }
+                                  },
+                               heatmap_legend_param = list(
+                                  title = "correlation (r)", direction = "horizontal"
+                                  ),
+                               row_names_gp = grid::gpar(fontsize = 6),
+                               row_split = anno$Type,
+                               column_split = alt_anno$Type,
+                               show_row_dend = F,
+                               row_title = NULL,
+                               column_title = NULL,
+                               left_annotation = rowAnnotation(`Gene Set` = anno$Type, col = sign_colors),
+                               bottom_annotation = HeatmapAnnotation(`Type` = alt_anno$Type, col = te_anno_colors,
+                                                                     show_annotation_name = F),
+                               right_annotation = rowAnnotation(SD = anno_barplot(sign_df_alt$SD),
+                                                                Length = anno_text(anno$Lengths, gp = gpar(fontsize = 5))),
+                               show_column_names = T
+                               )
+
+  draw(p, heatmap_legend_side = "left", annotation_legend_side = "left")
+}
+
+te.plot.all <- function(ps, rs, anno, sign_colors, sign_scores, ages, type, cohort){
+    if (type == "all"){
+      # Append r and p values to p_bars and r_bars
+      r_bars <<- rbind(r_bars, cbind(rs[c("LINE", "SINE", "LTR"),], Cohort = rep(cohort, 3), Class = c("LINE", "SINE", "LTR")))
+      p_bars <<- rbind(p_bars, cbind(ps[c("LINE", "SINE", "LTR"),], Cohort = rep(cohort, 3), Class = c("LINE", "SINE", "LTR")))
+      r_bars_fam <<- rbind(r_bars_fam, cbind(rs[c("L1", "L2", "Alu", "ERV1", "ERVL", "ERVL-MaLR", "ERVK", "MIR"),], Cohort = rep(cohort, 8), 
+                                             Family = c("L1", "L2", "Alu", "ERV1", "ERVL", "ERVL-MaLR", "ERVK", "MIR")))
+      p_bars_fam <<- rbind(p_bars_fam, cbind(ps[c("L1", "L2", "Alu", "ERV1", "ERVL", "ERVL-MaLR", "ERVK", "MIR"),], Cohort = rep(cohort, 8), 
+                                             Family = c("L1", "L2", "Alu", "ERV1", "ERVL", "ERVL-MaLR", "ERVK", "MIR")))
+  
+      p <- ComplexHeatmap::Heatmap(t(rs), col = col_fun,
+                                   rect_gp = gpar(col = "white", lwd = 2),
+                                   cell_fun = function(j, i, x, y, width, height, fill) {
+                                      if(t(ps)[i, j] < 0.05) {
+                                        grid.text("*", x, y)
+                                        }
+                                      },
+                                   heatmap_legend_param = list(
+                                      title = "correlation (r)", direction = "horizontal"
+                                      ),
+                                   row_names_gp = grid::gpar(fontsize = 6),
+                                   show_row_dend = F,
+                                   row_title = NULL,
+                                   column_title = NULL,
+                                   show_column_names = T
+                                   )
+    
+      draw(p, heatmap_legend_side = "left", annotation_legend_side = "left")
+    } else if (type == "no_class"){
+      ps <- ps[!(rownames(ps) %in% c("LTR", "LINE", "SINE")), !(colnames(ps) %in% c("LTR", "LINE", "SINE"))]
+      rs <- rs[!(rownames(rs) %in% c("LTR", "LINE", "SINE")), !(colnames(rs) %in% c("LTR", "LINE", "SINE"))]
+      
+      p <- ComplexHeatmap::Heatmap(t(rs), col = col_fun,
+                                   rect_gp = gpar(col = "white", lwd = 2),
+                                   cell_fun = function(j, i, x, y, width, height, fill) {
+                                      if(t(ps)[i, j] < 0.05) {
+                                        grid.text("*", x, y)
+                                        }
+                                      },
+                                   heatmap_legend_param = list(
+                                      title = "correlation (r)", direction = "horizontal"
+                                      ),
+                                   row_names_gp = grid::gpar(fontsize = 6),
+                                   show_row_dend = F,
+                                   row_title = NULL,
+                                   column_title = NULL,
+                                   show_column_names = T
+                                   )
+    
+      draw(p, heatmap_legend_side = "left", annotation_legend_side = "left")
+    } else if (type == "no_family"){
+      ps <- ps[!(rownames(ps) %in% c("L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK")), 
+               !(colnames(ps) %in% c("L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK"))]
+      rs <- rs[!(rownames(rs) %in% c("L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK")), 
+               !(colnames(rs) %in% c("L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK"))]
+      
+      p <- ComplexHeatmap::Heatmap(t(rs), col = col_fun,
+                                   rect_gp = gpar(col = "white", lwd = 2),
+                                   cell_fun = function(j, i, x, y, width, height, fill) {
+                                      if(t(ps)[i, j] < 0.05) {
+                                        grid.text("*", x, y)
+                                        }
+                                      },
+                                   heatmap_legend_param = list(
+                                      title = "correlation (r)", direction = "horizontal"
+                                      ),
+                                   row_names_gp = grid::gpar(fontsize = 6),
+                                   show_row_dend = F,
+                                   row_title = NULL,
+                                   column_title = NULL,
+                                   show_column_names = T
+                                   )
+    
+      draw(p, heatmap_legend_side = "left", annotation_legend_side = "left")
+    } else {
+      print("Valid types are 'all', 'no_class' and 'no_family'!")
+    }
+}
+
+##### CUSTOM GGPAIRS FUNCTIONS #####
+# Set lower half function for ggpairs
+lowerFn <- function(data, mapping, method = "lm", point.size = 0.5, ...) {
+  p <- ggplot(data = data, mapping = mapping) +
+    geom_point(colour = "black", size = point.size) +
+    geom_smooth(method = method, color = "red", ...) +
+    theme_pubr()
+  p
+}
+
+upperFn <- function(data, mapping, method="p", use="pairwise", ...){
+  # grab data
+  x <- eval_data_col(data, mapping$x)
+  y <- eval_data_col(data, mapping$y)
+  
+  # calculate correlation
+  corr <- cor(x, y, method=method, use=use)
+  
+  # calculate colour based on correlation value
+  # Here I have set a correlation of minus one to blue, 
+  # zero to white, and one to red 
+  # Change this to suit: possibly extend to add as an argument of `my_fn`
+  colFn <- colorRampPalette(c("dodgerblue3", "white", "firebrick"))
+  fill <- colFn(100)[findInterval(corr, seq(-1, 1, length=100))]
+  
+  ggally_cor_alt(data = data, mapping = mapping, size = 5, family = "Helvetica", color = "black", title = NULL, ...) + 
+    theme_pubr() +
+    theme(panel.background = element_rect(fill=fill))
+}
+
+ggally_cor_alt <- function(
+  data,
+  mapping,
+  ...,
+  stars = TRUE,
+  method = "pearson",
+  use = "complete.obs",
+  display_grid = FALSE,
+  digits = 3,
+  title_args = list(...),
+  group_args = list(...),
+  justify_labels = "right",
+  align_percent = 0.5,
+  title = "",
+  alignPercent = warning("deprecated. Use `align_percent`"),
+  displayGrid = warning("deprecated. Use `display_grid`")
+) {
+  if (!missing(alignPercent)) {
+    warning("`alignPercent` is deprecated. Please use `align_percent` if alignment still needs to be adjusted")
+    align_percent <- alignPercent
+  }
+  if (!missing(displayGrid)) {
+    warning("`displayGrid` is deprecated. Please use `display_grid`")
+    display_grid <- displayGrid
+  }
+
+  na.rm <-
+    if (missing(use)) {
+      # display warnings
+      NA
+    } else {
+      (use %in% c("complete.obs", "pairwise.complete.obs", "na.or.complete"))
+    }
+
+  ggally_statistic(
+    data = data,
+    mapping = mapping,
+    na.rm = na.rm,
+    align_percent = align_percent,
+    display_grid = display_grid,
+    title_args = title_args,
+    group_args = group_args,
+    justify_labels = justify_labels,
+    justify_text = "left",
+    sep = "",
+    title = title,
+    text_fn = function(x, y) {
+
+      corObj <- stats::cor.test(x, y, method = method, use = use)
+
+      # make sure all values have X-many decimal places
+      cor_est <- as.numeric(corObj$estimate)
+      cor_txt <- formatC(cor_est, digits = digits, format = "f")
+
+      # if stars should be added
+      if (isTRUE(stars)) {
+        cor_txt <- stringr::str_c(
+          cor_txt,
+          signif_stars(corObj$p.value)
+        )
+      }
+
+      cor_txt
+    }
+  )
+}
+
+#####
+PA.all <- function(cohort, type = "all"){
+  # Read TE expressions
+  te_exp <- readRDS(paste0("../Data/TE_Expression/", cohort, "_TEs_pData.rds"))
+  # Read signature scores
+  sign_scores <- read_excel_allsheets(paste0("../Results/", cohort, "_230607.xlsx"))
+  # Define signature scores
+  sign_colors <- list(`Gene Set` = c(setNames(pals::alphabet(n = length(names(sign_scores))+1), 
+                          c("Age",names(sign_scores)))))
+  
+  sgn_df <- dplyr::bind_rows(sign_scores)
+  sgn_df <- t(sgn_df)
+  colnames(sgn_df) <- sgn_df[1,]
+  sgn_df <- sgn_df[-1,]
+  
+  if (type == "all"){
+    inf_df <- cbind(te_exp %>% dplyr::select("Age", "LTR", "LINE", "SINE",
+                                             "L1", "L2", "ERV1", "ERVL", 
+                                             "ERVL-MaLR","ERVK", "Alu", "MIR"), 
+                    sgn_df)
+    inf_df <- inf_df[,sapply(inf_df, FUN = function(x){all(!is.na(x))})] # drop all NA columns
+    inf_df <- mutate_all(inf_df, function(x)as.numeric(x))
+    
+    col_ord <- c("Age", "LTR", "LINE", "SINE", "L1", "L2", "ERV1", "ERVL", 
+                 "ERVL-MaLR","ERVK", "Alu", "MIR", "IFN-I", "Inflammatory cytokines", 
+                 "Inflammatory chemokines","Inflammaging", "SASP", "Senescence")
+    inf_df <- inf_df[,col_ord]
+    
+    colnames(inf_df) <- gsub(" ", "\n", colnames(inf_df))
+    colnames(inf_df) <- gsub("ERVL-", "ERVL-\n", colnames(inf_df))
+    
+    pdf(file = paste0("../Figures/images/", cohort,"_pairs_all.pdf"),
+      width = 400*0.0394,
+      height = 400*0.0394)
+    g <- GGally::ggpairs(inf_df,
+                         upper = list(continuous = wrap(ggally_cor_alt,
+                                                        method = 'pearson')),
+                         lower = list(continuous = wrap(lowerFn)),
+                         diag =  list(continuous = function(...) ggally_densityDiag(...)+theme_pubr())) + 
+      theme(strip.text.x = element_blank(),
+            strip.text.y = element_blank(),
+            axis.text.x = element_blank(),
+            axis.text.y = element_blank())
+    print(g)
+    dev.off()
+  } else if (type == "family"){
+    inf_df <- cbind(te_exp %>% dplyr::select("Age", "L1", "L2", "ERV1", "ERVL", 
+                                             "ERVL-MaLR","ERVK", "Alu", "MIR"), 
+                    sgn_df)
+    
+    inf_df <- inf_df[,sapply(inf_df, FUN = function(x){all(!is.na(x))})]
+    inf_df <- mutate_all(inf_df, function(x)as.numeric(x))
+    
+    col_ord <- c("Age", "L1", "L2", "ERV1", "ERVL", 
+                 "ERVL-MaLR","ERVK", "Alu", "MIR", "IFN-I", "Inflammatory cytokines", 
+                 "Inflammatory chemokines","Inflammaging", "SASP", "Senescence")
+    inf_df <- inf_df[,col_ord]
+    
+    colnames(inf_df) <- gsub(" ", "\n", colnames(inf_df))
+    colnames(inf_df) <- gsub("ERVL-", "ERVL-\n", colnames(inf_df))
+    
+    pdf(file = paste0("../Figures/images/", cohort,"_pairs_family.pdf"),
+      width = 400*0.0394,
+      height = 400*0.0394)
+    g <- GGally::ggpairs(inf_df,
+                         upper = list(continuous = wrap(upperFn,
+                                                        method = 'pearson')),
+                         lower = list(continuous = wrap(lowerFn)),
+                         diag =  list(continuous = function(...) ggally_densityDiag(...)+theme_pubr())) + 
+      theme(strip.text.x = element_blank(),
+            strip.text.y = element_blank(),
+            axis.text.x = element_blank(),
+            axis.text.y = element_blank())
+    print(g)
+    dev.off()
+  } else if (type == "class"){
+    inf_df <- cbind(te_exp %>% dplyr::select("Age", "LTR", "LINE", "SINE"), 
+                    sgn_df)
+    inf_df <- inf_df[,sapply(inf_df, FUN = function(x){all(!is.na(x))})]
+    inf_df <- mutate_all(inf_df, function(x)as.numeric(x))
+    
+    col_ord <- c("Age", "LTR", "LINE", "SINE", "Inflammatory cytokines", 
+                 "Inflammatory chemokines","Inflammaging", "SASP", "Senescence")
+    inf_df <- inf_df[,col_ord]
+    
+    colnames(inf_df) <- gsub(" ", "\n", colnames(inf_df))
+    colnames(inf_df) <- gsub("ERVL-", "ERVL-\n", colnames(inf_df))
+    
+    pdf(file = paste0("../Figures/images/", cohort,"_pairs_class.pdf"),
+      width = 400*0.0394,
+      height = 400*0.0394)
+    g <- GGally::ggpairs(inf_df,
+                         upper = list(continuous = wrap(ggally_cor_alt,
+                                                        method = 'pearson')),
+                         lower = list(continuous = wrap(lowerFn)),
+                         diag =  list(continuous = function(...) ggally_densityDiag(...)+theme_pubr())) + 
+      theme(strip.text.x = element_blank(),
+            strip.text.y = element_blank(),
+            axis.text.x = element_blank(),
+            axis.text.y = element_blank())
+    print(g)
+    dev.off()
+  } else {
+    print("Valid types are 'all', 'no_class' and 'no_family'!")
+  }
+}
+
+scatter.all <- function(cohort, type = "all", signatures = c("SASP", "Senescence", "Inflammaging")){
+  # Read TE expressions
+  te_exp <- readRDS(paste0("../Data/TE_Expression/", cohort, "_TEs_pData.rds"))
+  # Read signature scores
+  sign_scores <- read_excel_allsheets(paste0("../Results/", cohort, "_230607.xlsx"))
+  # Define signature scores
+  sgn_df <- dplyr::bind_rows(sign_scores)
+  sgn_df <- t(sgn_df)
+  colnames(sgn_df) <- sgn_df[1,]
+  sgn_df <- sgn_df[-1,]
+  sgn_df <- dplyr::mutate_all(as.data.frame(sgn_df), function(x)as.numeric(x))
+  colnames(sgn_df) <- gsub(" ", "\n", colnames(sgn_df))
+  # Filter signatures
+  sgn_df <- sgn_df[,signatures]
+  
+  if (type == "all"){
+    cor_df <- cbind(te_exp[,c("LTR", "LINE", "SINE", "L1", "Alu", "ERV1", 
+                              "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK")], sgn_df)
+    cor_long <- tidyr::pivot_longer(cor_df, cols = c("LTR", "LINE", "SINE", "L1", "Alu", "ERV1", 
+                              "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK"))
+    colnames(cor_long)[(length(colnames(cor_long))-1):length(colnames(cor_long))] <- c("TE name", "TE expression") 
+    cor_longer <- tidyr::pivot_longer(cor_long, cols = colnames(cor_df)[12:length(colnames(cor_df))])
+    colnames(cor_longer)[(length(colnames(cor_longer))-1):length(colnames(cor_longer))] <- c("Signature name", "Score")
+    cor_longer$Cohort <- cohort
+    
+    cor_longer$`TE name` <- factor(cor_longer$`TE name`,
+                                   levels = c("LTR", "LINE", "SINE", "L1", "L2",
+                                              "ERV1", "ERVL", "ERVL-MaLR", "ERVK",
+                                              "Alu", "MIR"))
+    
+    pdf(file = paste0("../Figures/images/", cohort,"_scatter_all.pdf"),
+        width = 88*0.0394,
+        height = 220*0.0394)
+    g <- ggplot(data = cor_longer, aes(x = Score, y = `TE expression`)) +
+      geom_point(size = 0.5) +
+      geom_smooth(method = "lm", se=FALSE, color="red", formula = y ~ x, size = 0.5) +
+      facet_grid(facets = `TE name` ~ `Signature name`, scales = "free", switch = "both") +
+      theme_pubr() +
+      theme(axis.text.x = element_text(size = 5, family = "Helvetica"),
+            axis.text.y = element_text(size = 5, family = "Helvetica"),
+            axis.title.x = element_text(size = 7, family = "Helvetica"),
+            axis.title.y= element_text(size = 7, family = "Helvetica"),
+            strip.text.x = element_text(size = 7, family = "Helvetica"),
+            strip.text.y = element_text(size = 7, family = "Helvetica"),
+            strip.placement = "outside")
+    print(g)
+    dev.off()
+  } else if (type == "class"){
+    cor_df <- cbind(te_exp[,c("LTR", "LINE", "SINE")], sgn_df)
+    cor_long <- tidyr::pivot_longer(cor_df, cols = c("LTR", "LINE", "SINE"))
+    colnames(cor_long)[(length(colnames(cor_long))-1):length(colnames(cor_long))] <- c("TE name", "TE expression") 
+    cor_longer <- tidyr::pivot_longer(cor_long, cols = colnames(cor_df)[4:length(colnames(cor_df))])
+    colnames(cor_longer)[(length(colnames(cor_longer))-1):length(colnames(cor_longer))] <- c("Signature name", "Score")
+    cor_longer$Cohort <- cohort
+    
+    ggplot(data = cor_longer, aes(x = Score, y = `TE expression`)) +
+      geom_point() +
+      facet_grid(facets = `TE name` ~ `Signature name`, scales = "free") +
+      theme_minimal() +
+      scale_x_continuous(n.breaks = 3) +
+      theme(strip.placement = "outside")
+  } else if (type == "family"){
+    cor_df <- cbind(te_exp[,c("L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK")], sgn_df)
+    cor_long <- tidyr::pivot_longer(cor_df, cols = c("L1", "Alu", "ERV1", "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK"))
+    colnames(cor_long)[(length(colnames(cor_long))-1):length(colnames(cor_long))] <- c("TE name", "TE expression") 
+    cor_longer <- tidyr::pivot_longer(cor_long, cols = colnames(cor_df)[9:length(colnames(cor_df))])
+    colnames(cor_longer)[(length(colnames(cor_longer))-1):length(colnames(cor_longer))] <- c("Signature name", "Score")
+    cor_longer$Cohort <- cohort
+    
+    ggplot(data = cor_longer, aes(x = Score, y = `TE expression`)) +
+      geom_point() +
+      facet_grid(facets = `TE name` ~ `Signature name`, scales = "free") +
+      theme_minimal() +
+      scale_x_continuous(n.breaks = 3) +
+      theme(strip.placement = "outside")
+  } else {
+    print("Wrong type! Available values: 'all', 'class' , 'family'.")
+  }
+}
+
+heatmap.all <- function(col_bin = T, cohorts_list = c("GSE56045", "GSE48556", "GSE58137"), selection = "all"){
+  chrt_df <- data.frame()
+  for (cohort in cohorts_list){
+    # Read TE expressions
+    te_exp <- readRDS(paste0("../Data/TE_Expression/", cohort, "_TEs_pData.rds"))
+    # Read signature scores
+    sign_scores <- read_excel_allsheets(paste0("../Results/", cohort, "_230607.xlsx"))
+    # Define signature scores
+    sgn_df <- dplyr::bind_rows(sign_scores)
+    sgn_df <- t(sgn_df)
+    colnames(sgn_df) <- sgn_df[1,]
+    sgn_df <- sgn_df[-1,]
+    sgn_df <- dplyr::mutate_all(as.data.frame(sgn_df), function(x)as.numeric(x))
+    colnames(sgn_df) <- gsub(" ", "\n", colnames(sgn_df))
+    
+    cor_df <- cbind(te_exp[,c("Age", "LTR", "LINE", "SINE", "L1", "L2", "ERV1", "ERVL", 
+                                             "ERVL-MaLR","ERVK", "Alu", "MIR")], sgn_df)
+    cor_df <- as.data.frame(scale(cor_df))
+    cor_df <- dplyr::mutate_all(as.data.frame(cor_df), function(x)as.numeric(x))
+    cor_df$Cohort <- cohort
+    chrt_df <- rbind(chrt_df, cor_df)
+  }
+  chrt_df$Cohort <- plyr::mapvalues(chrt_df$Cohort, 
+                                         from = c("E_TABM_1036", "GSE20142", "GSE47729", 
+                                                  "GSE48152", "GSE48556", "GSE56045", 
+                                                  "GSE58137"),
+                                         to = c("DILGOM", "FEHRMANN", "HVH",
+                                                "InCHIANTI", "GARP", "MESA",
+                                                "GTP"))
+  
+  anno_colors <- list(Type = c("Class" = "#9B23E8", "Family" = "#F7730C", "Age" = "#0557E5", "Signature" = "#08FC74"))
+  cohort_colors <- list(Cohort = c("MESA" = "#E69AAB", "GTP" = "#82CBE6", "GARP" = "#E6DE6C"))
+  
+  if (selection == "all"){
+    # Define TE types for annotation
+    anno <- data.frame(Feature = c("LTR", "LINE", "SINE", "L1", "L2", "ERV1", "ERVL", 
+                                             "ERVL-MaLR","ERVK", "Alu", "MIR", "Age", 
+                                   colnames(sgn_df)),
+                          Type = c(rep("Class", 3), rep("Family", 8), "Age", 
+                                   rep("Signature", length(colnames(sgn_df)))))
+    
+    alt_anno <- data.frame(Type = t(anno$Type)[order(match(anno$Feature,colnames(chrt_df)[-length(colnames(chrt_df))]))])
+    rownames(alt_anno) <- colnames(chrt_df)[-length(colnames(chrt_df))]
+    
+    ComplexHeatmap::Heatmap(t(chrt_df[,-length(colnames(chrt_df))]),
+                            show_column_names = F,
+                            show_column_dend = F,
+                            show_row_dend = T,
+                            cluster_rows = T,
+                            cluster_columns = col_bin,
+                            row_split = alt_anno$Type,
+                            column_split = chrt_df$Cohort,
+                            row_title = NULL,
+                            column_title = NULL,
+                            show_heatmap_legend = F,
+                            bottom_annotation = HeatmapAnnotation(`Cohort` = chrt_df$Cohort, col = cohort_colors, show_annotation_name = F),
+                            right_annotation = rowAnnotation(`Type` = alt_anno$Type, col = anno_colors, show_annotation_name = F)
+                            )
+  } else if (selection == "family"){
+    # Define TE types for annotation
+    anno <- data.frame(Feature = c("Age", "L1", "L2", "ERV1", "ERVL", 
+                                   "ERVL-MaLR","ERVK", "Alu", "MIR", 
+                                   colnames(sgn_df)),
+                          Type = c("Age", rep("Family", 8),
+                                   rep("Signature", length(colnames(sgn_df)))))
+    
+    chrt_df <- chrt_df %>% 
+      dplyr::select(c("Age", "L1", "L2", "ERV1", "ERVL",
+                      "ERVL-MaLR","ERVK", "Alu", "MIR", colnames(sgn_df), "Cohort"))
+    
+    alt_anno <- data.frame(Type = t(anno$Type)[order(match(anno$Feature,colnames(chrt_df)[-length(colnames(chrt_df))]))])
+    rownames(alt_anno) <- colnames(chrt_df)[-length(colnames(chrt_df))]
+    
+    pdf(file = paste0("../Figures/images/", cohort,"_heatmap_family.pdf"),
+        width = 130*0.0394,
+        height = 110*0.0394)
+    ht <- ComplexHeatmap::Heatmap(t(chrt_df[,-length(colnames(chrt_df))]),
+                            show_column_names = F,
+                            show_column_dend = F,
+                            show_row_dend = T,
+                            cluster_rows = T,
+                            cluster_columns = col_bin,
+                            row_split = alt_anno$Type,
+                            column_split = chrt_df$Cohort,
+                            row_names_gp = grid::gpar(fontsize = 7, fontfamily = "Helvetica"),
+                            row_title = NULL,
+                            column_title = NULL,
+                            show_heatmap_legend = F,
+                            right_annotation = rowAnnotation(`Type` = alt_anno$Type, 
+                                                             col = anno_colors, 
+                                                             show_annotation_name = F)
+                            )
+    draw(ht, show_heatmap_legend = F)
+    dev.off()
+  } else if (selection == "class"){
+    # Define TE types for annotation
+    anno <- data.frame(Feature = c("LTR", "LINE", "SINE", "Age", 
+                                   colnames(sgn_df)),
+                          Type = c(rep("Class", 3), "Age", 
+                                   rep("Signature", length(colnames(sgn_df)))))
+    
+    chrt_df <- chrt_df %>% 
+      dplyr::select(c("LTR", "LINE", "SINE", "Age", 
+                                   colnames(sgn_df), "Cohort"))
+    
+    alt_anno <- data.frame(Type = t(anno$Type)[order(match(anno$Feature,colnames(chrt_df)[-length(colnames(chrt_df))]))])
+    rownames(alt_anno) <- colnames(chrt_df)[-length(colnames(chrt_df))]
+    
+    ComplexHeatmap::Heatmap(t(chrt_df[,-length(colnames(chrt_df))]),
+                            show_column_names = F,
+                            show_column_dend = F,
+                            show_row_dend = T,
+                            cluster_rows = T,
+                            cluster_columns = col_bin,
+                            row_split = alt_anno$Type,
+                            column_split = chrt_df$Cohort,
+                            row_title = NULL,
+                            column_title = NULL,
+                            show_heatmap_legend = F,
+                            bottom_annotation = HeatmapAnnotation(`Cohort` = chrt_df$Cohort, col = cohort_colors, show_annotation_name = F),
+                            right_annotation = rowAnnotation(`Type` = alt_anno$Type, col = anno_colors, show_annotation_name = F)
+                            )
+  }
+}
+
+quartile.all <- function(cohort = "GSE56045", te_class){
+  chrt_df <- data.frame()
+  
+  # Read TE expressions
+  te_exp <- readRDS(paste0("../Data/TE_Expression/", cohort, "_TEs_pData.rds"))
+  # Read signature scores
+  sign_scores <- read_excel_allsheets(paste0("../Results/", cohort, "_230607.xlsx"))
+  # Define signature scores
+  sgn_df <- dplyr::bind_rows(sign_scores)
+  sgn_df <- t(sgn_df)
+  colnames(sgn_df) <- sgn_df[1,]
+  sgn_df <- sgn_df[-1,]
+  sgn_df <- dplyr::mutate_all(as.data.frame(sgn_df), function(x)as.numeric(x))
+  colnames(sgn_df) <- gsub(" ", "\n", colnames(sgn_df))
+  
+  cor_df <- cbind(te_exp[,c("Age", "LTR", "LINE", "SINE","L1", "Alu", "ERV1", 
+                            "ERVL", "L2", "ERVL-MaLR", "MIR", "ERVK")], sgn_df)
+  cor_df <- as.data.frame(scale(cor_df))
+  cor_df <- dplyr::mutate_all(as.data.frame(cor_df), function(x)as.numeric(x))
+  cor_df$Cohort <- cohort
+  chrt_df <- rbind(chrt_df, cor_df)
+  
+  chrt_df$Cohort <- plyr::mapvalues(chrt_df$Cohort, 
+                                         from = c("E_TABM_1036", "GSE20142", "GSE47729", 
+                                                  "GSE48152", "GSE48556", "GSE56045", 
+                                                  "GSE58137"),
+                                         to = c("DILGOM", "FEHRMANN", "HVH",
+                                                "InCHIANTI", "GARP", "MESA",
+                                                "GTP"))
+  
+  chrt_df <- chrt_df %>% 
+    mutate(quartile = ntile(get(te_class), n = 4))
+  chrt_df$quartile <- as.factor(chrt_df$quartile)
+  chrt_q <- chrt_df %>% 
+    dplyr::select(c("SASP", "Inflammatory\nchemokines", "Inflammatory\ncytokines",
+                    "Senescence", "Inflammaging", "quartile")) %>%
+    tidyr::pivot_longer(cols = c("SASP", "Inflammatory\nchemokines", 
+                                 "Inflammatory\ncytokines","Senescence", "Inflammaging"))
+  chrt_q$name <- factor(chrt_q$name, levels = c("SASP", "Inflammatory\nchemokines", 
+                                                "Inflammatory\ncytokines", "Senescence", "Inflammaging"))
+  chrt_q$quartile <- plyr::mapvalues(chrt_q$quartile, from = c(1,2,3,4), to = c("Low", "Med", "Med", "High"))
+  
+  # Calculate comparisons
+  comparisons <- compare_means(formula = value ~ quartile, data = chrt_q, group.by = "name") %>%
+    filter(p.signif != "ns")
+  
+  comparisons$p.signif <- ifelse(comparisons$p <= 0.05 & comparisons$p > 0.01, "*", 
+                                   ifelse(comparisons$p <= 0.01 & comparisons$p > 0.001, "**",
+                                          ifelse(comparisons$p <= 0.001, "***", "ns")))
+  
+  pdf(file = paste0("../Figures/images/", cohort, "_quartile_", te_class, ".pdf"),
+      width = 165*0.0394,
+      height = 35*0.0394)
+  g <- ggplot(data = chrt_q, aes(x = quartile, y = value, group = quartile)) +
+    geom_boxplot(aes(fill = quartile), size = 0.2, outlier.shape = NA) +
+    scale_fill_manual(values = c("#0DC35A", "#FFE100", "#FF4300")) +
+    facet_grid(facets = ~ name) +
+    stat_pvalue_manual(comparisons, label = "p.signif", y.position = 3, 
+                       step.increase = 0.08, step.group.by = "name",
+                       label.size = 2.5, bracket.size = 0.2) +
+    theme_pubr() +
+    theme(axis.text.x = element_text(size = 7, family = "Helvetica"),
+          axis.text.y = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y= element_blank(),
+          strip.text.x = element_blank(),
+          strip.text.y = element_blank(),
+          legend.position = "none") +
+    scale_x_discrete(labels = c("Low", "Med", "High")) +
+    scale_y_continuous(n.breaks = 3, breaks = c(-2,0,2)) +
+    xlab("Quartile") +
+    ylab("Score") +
+    theme(panel.spacing = unit(1, "cm"))
+  print(g)
+  dev.off()
+}
+
+##### Convert gene sets to GeneSetCollection objects
+# Read gene sets
+gsva_gene_sets <- read_excel_allsheets("../../chemo_pred/Data/gsva_gene_signatures_newIR.xlsx")
+gsva_gs <- sapply(names(gsva_gene_sets),
+                     FUN = function(y){
+                       GSEABase::GeneSetCollection(sapply(names(gsva_gene_sets[[y]]), 
+                                              FUN = function(x){
+                                                GSEABase::GeneSet(unique(mapIds(org.Hs.eg.db,
+                                                               unique(gsva_gene_sets[[y]][x][!is.na(gsva_gene_sets[[y]][x])]),
+                                                               column = "ENTREZID", keytype = "SYMBOL")), 
+                                                        setName = x, geneIdType = EntrezIdentifier())}, USE.NAMES = T)
+                       )},
+               USE.NAMES = T)
+
+##### GSVA Heatmap function
+gsva.heatmap <- function(cohorts_list, te_list){
+  chrt_df <- data.frame()
+  for (cohort in cohorts_list){
+    # Read Gene expressions
+    gene_exp <- readRDS(paste0("../Data/Gene_Expression/", cohort, "_avg.rds"))
+    rownames(gene_exp) <- mapIds(org.Hs.eg.db, rownames(gene_exp), column = "ENTREZID", keytype = "SYMBOL")
+
+    # Read TE expressions
+    te_exp <- readRDS(paste0("../Data/TE_Expression/", cohort, "_TEs_pData.rds"))
+    rownames(te_exp) <- gsub(" 1", "", rownames(te_exp))
+
+    for (te in te_list){
+      te_exp <- te_exp %>%
+        mutate(quartile = ntile(get(te), n = 4))
+      te_exp$quartile <- as.factor(te_exp$quartile)
+
+      gene_exprs <- ExpressionSet(as.matrix(gene_exp),
+                                  phenoData = AnnotatedDataFrame(data.frame(quartile = t(te_exp)["quartile",])))
+      gsva_res <- sapply(gsva_gs, FUN = function(x){GSVA::gsva(gene_exprs, x)}, USE.NAMES = T)
+
+      mod <- model.matrix(~ factor(gene_exprs$quartile))
+      colnames(mod) <- c("q1", "q2", "q3", "q4")
+
+      tt_df <- data.frame()
+      for (gs_name in names(gsva_res)){
+        fit <- lmFit(gsva_res[[gs_name]], mod)
+        fit <- eBayes(fit)
+        res <- decideTests(fit, p.value=0.05)
+
+        contr <- makeContrasts(q1 - q4, levels = colnames(coef(fit)))
+        tmp <- contrasts.fit(fit, contr)
+        tmp <- eBayes(tmp)
+        tt <- topTable(tmp, sort.by = "P", n = Inf)
+
+        tt$diffexp <- "NO"
+        tt$diffexp[tt$logFC < -0.1 & tt$adj.P.Val < 0.05] <- "DOWN"
+        tt$diffexp[tt$logFC > 0.1 & tt$adj.P.Val < 0.05] <- "UP"
+        tt$diffexp <- factor(tt$diffexp, levels = c("DOWN", "NO", "UP"))
+        tt$pathway <- rownames(tt)
+        tt$gene_set <- gs_name
+
+        if (length(names(gsva_gene_sets[[gs_name]])) == 1){
+          rownames(tt)[tt$gene_set == gs_name] <- gs_name
+          tt$pathway[tt$gene_set == gs_name] <- gs_name
+        }
+
+        tt_df <- rbind(tt_df, tt)
+      }
+      tt_df$diffexp_factor <- plyr::mapvalues(tt_df$diffexp,
+                                              from = c("DOWN", "NO", "UP"),
+                                              to = c(-1,0,1))
+      tt_df$cohort <- cohort
+      tt_df$cohort <- plyr::mapvalues(tt_df$cohort,
+                                       from = c("E_TABM_1036", "GSE20142", "GSE47729",
+                                                "GSE48152", "GSE48556", "GSE56045",
+                                                "GSE58137"),
+                                       to = c("DILGOM", "FEHRMANN", "HVH",
+                                              "InCHIANTI", "GARP", "MESA",
+                                              "GTP"))
+      tt_df$TE <- te
+      chrt_df <- rbind(chrt_df, tt_df)
+    }
+  }
+  # save(chrt_df, file = "../Data/gsva_results_all_cohorts_newIR.Rda")
+  # load("../Data/gsva_results_all_cohorts.Rda")
+  
+  chrt_wide <- tidyr::pivot_wider(chrt_df[,c("gene_set", "pathway", "diffexp_factor", "cohort", "TE")], 
+                                  names_from = "TE", id_cols = c("cohort", "pathway", "gene_set"), 
+                                  values_from = "diffexp_factor")
+  
+  # Remove possible duplicates when shortened
+  chrt_wide <- chrt_wide[!grepl("GOBP_POSITIVE_REGULATION_OF_ACUTE_INFLAMMATORY_RESPONSE", chrt_wide$pathway), ]
+  chrt_wide <- chrt_wide[!grepl("GOBP_POSITIVE_REGULATION_OF_CYTOKINE_PRODUCTION_INVOLVED_IN_INFLAMMATORY_RESPONSE", chrt_wide$pathway), ]
+  chrt_wide <- chrt_wide[!grepl("GOBP_POSITIVE_REGULATION_OF_ACUTE_INFLAMMATORY_RESPONSE_TO_ANTIGENIC_STIMULUS ", chrt_wide$pathway), ]
+  
+  # chrt_wide$pathway <- stringr::str_trunc(chrt_wide$pathway, width = 35, side = "center")
+  start_count <- 20
+  word_count <- 45
+  end_count <- word_count - (start_count + 4)
+  chrt_wide$pathway <- sapply(chrt_wide$pathway, FUN = function(x){ifelse(nchar(x) > word_count, 
+                                                                          paste0(substring(x, 1, start_count), "...", substring(x, nchar(x)-end_count, nchar(x))),
+                                                                          x)})
+  
+  colFn <- c("-1" = "dodgerblue3", "0" = "lightgray", "1" = "firebrick")
+  
+  chrt_wide$gene_set <- plyr::mapvalues(chrt_wide$gene_set,
+                                        from = c("senescence", "inflammaging",
+                                                 "dna_repair", "inflammatory_response",
+                                                 "interferon"),
+                                        to = c("Senescence", "Inflammaging",
+                                                 "DNA Repair", "Inflammatory Response",
+                                                 "Interferon"))
+  
+  gs_colors <- list(`Gene Set` = c("Senescence" = "#FF8B82", "Inflammaging" = "#9771DE", 
+                                   "DNA Repair" = "#8AEDF5", "Interferon" = "#A2E07E",
+                                   "Inflammatory Response" = "#FADB93"))
+  
+  # Drop DN, Inflammaging and Interferon
+  chrt_wide <- chrt_wide[chrt_wide$gene_set != "Inflammaging",]
+  chrt_wide <- chrt_wide[chrt_wide$gene_set != "Interferon",]
+  chrt_wide <- chrt_wide[chrt_wide$gene_set != "Senescence",]
+  chrt_wide <- chrt_wide[!(grepl(pattern = "_DN", chrt_wide$pathway)),]
+  chrt_wide <- chrt_wide[!(grepl(pattern = "_NEGATIVE_", chrt_wide$pathway)),]
+  chrt_wide <- chrt_wide[!(grepl(pattern = "COVID", chrt_wide$pathway)),]
+  
+  # Remove duplicates
+  chrt_wide <- chrt_wide[!grepl(".*\\.{3}51", chrt_wide$pathway), ]
+  chrt_wide <- chrt_wide[!grepl(".*\\.{3}53", chrt_wide$pathway), ]
+  chrt_wide <- chrt_wide[!grepl(".*\\.{3}45", chrt_wide$pathway), ]
+  chrt_wide <- chrt_wide[!grepl(".*\\.{3}52", chrt_wide$pathway), ]
+  
+  chrt_wide$pathway <- gsub("\\.*\\d*$", "", chrt_wide$pathway)
+  
+  ht_list <- NULL
+  for (te in te_list){
+    chrt_plot <- cbind(MESA = chrt_wide[chrt_wide$cohort == "MESA",te], 
+                       GTP = chrt_wide[chrt_wide$cohort == "GTP",te], 
+                       GARP = chrt_wide[chrt_wide$cohort == "GARP",te])
+    rownames(chrt_plot) <- chrt_wide$pathway[chrt_wide$cohort == "MESA"]
+    colnames(chrt_plot) <- c("MESA", "GTP", "GARP")
+    if (te == "LINE"){
+      h <-   rowAnnotation(`Pathway` = anno_text(rownames(chrt_plot), 
+                                                 gp = gpar(fontsize = 5, 
+                                                           fontfamily = "Helvetica"),
+                                                 just = "left")) +
+        rowAnnotation(`Gene Set` = chrt_wide$gene_set[chrt_wide$cohort == "MESA"], 
+                                                     show_annotation_name = F, show_legend = F, col = gs_colors) + 
+        ComplexHeatmap::Heatmap(chrt_plot, col = colFn,
+                                   show_heatmap_legend = F,
+                                   row_names_gp = gpar(fontsize = 5, fontfamily = "Helvetica"),
+                                   row_names_side = "left",
+                                   column_names_gp = gpar(fontsize = 5, fontfamily = "Helvetica"),
+                                   column_names_side = "top",
+                                   column_title = te,
+                                   column_title_rot = 45,
+                                   column_title_gp = gpar(fontsize = 7, fontfamily = "Helvetica")
+                                   )
+      ht_list <- ht_list + h
+    } else {
+      h <- ComplexHeatmap::Heatmap(chrt_plot, col = colFn,
+                                   show_heatmap_legend = F,
+                                   row_names_gp = gpar(fontsize = 5, fontfamily = "Helvetica"),
+                                   row_names_side = "left",
+                                   column_names_gp = gpar(fontsize = 5, fontfamily = "Helvetica"),
+                                   column_names_side = "top",
+                                   column_title = te,
+                                   column_title_rot = 45,
+                                   column_title_gp = gpar(fontsize = 7, fontfamily = "Helvetica")
+                                   )
+      ht_list <- ht_list + h
+    }
+  }
+  
+  pdf(file = paste0("../Figures/images/gsva_heatmap_noSenescence.pdf"),
+      width = 151*0.0394,
+      height = 165*0.0394)
+  draw(ht_list)
+  dev.off()
+}
+
+radarplot.all <- function(){
+  load("../Data/gsva_results_all_cohorts_newIR.Rda")
+  
+  chrt_colors = c("MESA" = "#F0D600", "GARP" = "#D51416", "GTP" = "#F49200")
+  
+  chrt_sum <- chrt_df %>%
+    tidyr::pivot_wider(id_cols = c(cohort, TE, gene_set), 
+                       values_from = diffexp, 
+                       names_from = diffexp,
+                       values_fn = function(x) sum(!is.na(x)), values_fill = 0) %>%
+    as.data.frame()
+  
+  chrt_sum$diff <- chrt_sum$UP - chrt_sum$DOWN
+  
+  for (gs in unique(chrt_sum$gene_set)){
+    plot_chrt <- chrt_sum[chrt_sum$gene_set == gs,]
+    
+    plot_wide <- plot_chrt %>%
+      tidyr::pivot_wider(id_cols = cohort, names_from = TE, values_from = diff)
+    
+    rid <- plot_wide$cohort
+    plot_wide <- plot_wide %>%
+      dplyr::select(-cohort)
+    rownames(plot_wide) <- rid
+    
+    plot_wide <- rbind(max(plot_wide),
+                       min(plot_wide),
+                       plot_wide)
+    
+    pdf(file = paste0("../Figures/images/", gs, "_radar.pdf"),
+      width = 120*0.0394,
+      height = 120*0.0394)
+    radarchart(plot_wide, 
+               pcol = chrt_colors,
+               pfcol = alpha(chrt_colors, 0.3),
+               plwd=2 , plty=1,
+               vlabels = "")
+    dev.off()
+  }
+}
+
+methyl.bars <- function(methyl.cohort.list = c("GSE56046", "GSE40279", "E-MTAB-7309", "GSE56105"), 
+                        selected.tes = c("LTR", "LINE", "SINE", "Satellite"),
+                        te.type = "TE_Classes", pdf.width=60, pdf.height=40){
+  methyl.all.df <- data.frame()
+  
+  for (methyl.cohort in methyl.cohort.list){
+    # Read Methylation expressions
+    methyl_df <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_TE_Final.rds"))
+    
+    methyl_df <- as.data.frame(t(methyl_df)) %>%
+      dplyr::select(selected.tes) 
+    methyl_df$Cohort <- methyl.cohort
+    
+    # Read meta and add Age info
+    if (file.exists(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))){
+      methyl_meta <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))
+      # Order meta as methylation df
+      methyl_meta <- methyl_meta[match(methyl_meta$Sample_ID, rownames(methyl_df)),]
+      # Add Age column
+      methyl_df$Age <- methyl_meta$Age
+    } else if (file.exists(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"))){
+      methyl_meta <- read.table(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"), header = T, sep = "\t")
+      # Remove duplicate entries for samples
+      methyl_meta <- methyl_meta[!(duplicated(methyl_meta$Source.Name)),]
+      # Order meta as methylation df
+      if (methyl.cohort == "GSE40279"){
+        methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_source_name.), rownames(methyl_df)),]
+        # Add Age column
+        methyl_df$Age <- methyl_meta$Characteristics..age.y.
+      } else if (methyl.cohort == "GSE56105"){
+        methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_title.), rownames(methyl_df)),]
+        # Add Age column
+        methyl_df$Age <- methyl_meta$Characteristics..age.
+      } else {
+        methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Assay.Name), rownames(methyl_df)),]
+        methyl_df$Age <- methyl_meta$Characteristics.age.
+      }
+    }
+    
+    methyl.all.df <- rbind(methyl.all.df, methyl_df)
+  }
+  
+  cohorts_from <- c("GSE40279", "GSE56105", "GSE56046", "E-MTAB-7309")
+  cohorts_to <- c("GMPWAR", "BSGS", "MESA","SATSA")
+  methyl.all.df$Cohort <- plyr::mapvalues(methyl.all.df$Cohort, 
+                                         from = cohorts_from,
+                                         to = cohorts_to)
+  
+  corTab <- data.frame()
+  for (methyl.cohort in methyl.cohort.list){
+    methyl.cohort <- plyr::mapvalues(methyl.cohort, 
+                                         from = cohorts_from,
+                                         to = cohorts_to)
+    inf_df <- methyl.all.df[methyl.all.df$Cohort == methyl.cohort,]
+    
+    for (feat1 in selected.tes){
+      for (feat2 in c("Age")) {
+        p.val <- tryCatch({
+          round(cor.test(as.numeric(inf_df[,feat1]), as.numeric(inf_df[,feat2]), method = "pearson")$p.value, 3)
+        },
+          error = function(err) {return(NA)}
+        )
+        
+        r.val <- tryCatch({
+          round(cor.test(as.numeric(inf_df[,feat1]), as.numeric(inf_df[,feat2]), method = "pearson")$estimate, 2)
+        },
+          error = function(err) {return(NA)}
+        )
+        corTab <- rbind(corTab, c(feat1, p.val, r.val, methyl.cohort))
+      }
+    }
+    colnames(corTab) <- c("TE", "p.value", "r.value", "Cohort")
+  }
+  
+  corTab <- corTab %>%
+    dplyr::mutate_at(.vars = c("p.value","r.value"), as.numeric)
+  
+  pdf(file = paste0("../Figures/images/Methylation_vs_",te.type,".pdf"),
+     width = pdf.width*0.0394,
+     height = pdf.height*0.0394)
+
+  g <- ggplot(data = corTab, 
+                aes(x = factor(TE, levels = selected.tes),
+                    y = r.value, fill = Cohort)) +
+      geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7) +
+      theme_minimal() +
+      xlab("Age") +
+      ylab("r-value") +
+      scale_x_discrete(breaks = selected.tes) +
+      scale_y_continuous(n.breaks = 3, breaks = c(-0.5,0,0.5)) +
+      scale_fill_npg() +
+      theme(axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            strip.text = element_text(size=5, family = "Helvetica"),
+            axis.text.x = element_blank(),
+            axis.text.y = element_text(size = 7, family = "Helvetica"),
+            legend.text = element_blank(),
+            legend.position = "none",
+            legend.title = element_blank()) +
+      geom_text(aes(label = ifelse((corTab$p.value <= 0.001) & (corTab$r.value < 0), "***", 
+                                   ifelse((corTab$p.value <= 0.01) & (corTab$r.value < 0), "**", 
+                                          ifelse((corTab$p.value <= 0.05) & (corTab$r.value < 0), "*", "")))),
+                group = corTab$TE,
+                position = position_dodge(width = 0.7), vjust = 1.1, size = 2) +
+      geom_text(aes(label = ifelse((corTab$p.value <= 0.001) & (corTab$r.value > 0), "***", 
+                                   ifelse((corTab$p.value <= 0.01) & (corTab$r.value > 0), "**", 
+                                          ifelse((corTab$p.value <= 0.05) & (corTab$r.value > 0), "*", "")))),
+                group = corTab$TE,
+                position = position_dodge(width = 0.7), vjust = 0.5, size = 2)
+  print(g)
+  dev.off()
+}
+
+methyl.scat <- function(methyl.cohort.list = c("GSE56105", "GSE56046"), 
+                        selected.tes = c("LTR", "LINE", "SINE"),
+                        te.type = "TE_Classes", pdf.width=60, pdf.height=40){
+  
+  methyl.all.df <- data.frame()
+  
+  for (methyl.cohort in methyl.cohort.list){
+    # Read Methylation expressions
+    methyl_df <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_TE_Final.rds"))
+    
+    methyl_df <- as.data.frame(t(methyl_df)) %>%
+      dplyr::select(selected.tes) 
+    methyl_df$Cohort <- methyl.cohort
+    
+    # Read meta and add Age info
+    if (file.exists(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))){
+      methyl_meta <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))
+      # Order meta as methylation df
+      methyl_meta <- methyl_meta[match(methyl_meta$Sample_ID, rownames(methyl_df)),]
+      # Add Age column
+      methyl_df$Age <- methyl_meta$Age
+    } else if (file.exists(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"))){
+      methyl_meta <- read.table(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"), header = T, sep = "\t")
+      # Remove duplicate entries for samples
+      methyl_meta <- methyl_meta[!(duplicated(methyl_meta$Source.Name)),]
+      # Order meta as methylation df
+      if (methyl.cohort == "GSE40279"){
+        methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_source_name.), rownames(methyl_df)),]
+        # Add Age column
+        methyl_df$Age <- methyl_meta$Characteristics..age.y.
+      } else if (methyl.cohort == "GSE56105"){
+        methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_title.), rownames(methyl_df)),]
+        # Add Age column
+        methyl_df$Age <- methyl_meta$Characteristics..age.
+      } else {
+        methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Assay.Name), rownames(methyl_df)),]
+        methyl_df$Age <- methyl_meta$Characteristics.age.
+      }
+    }
+    
+    methyl.all.df <- rbind(methyl.all.df, methyl_df)
+  }
+  
+  cohorts_from <- c("GSE40279", "GSE56105", "GSE56046", "E-MTAB-7309")
+  cohorts_to <- c("GMPWAR", "BSGS", "MESA","SATSA")
+  methyl.all.df$Cohort <- plyr::mapvalues(methyl.all.df$Cohort, 
+                                         from = cohorts_from,
+                                         to = cohorts_to)
+  
+  methyl.long <- methyl.all.df %>%
+    tidyr::pivot_longer(cols = selected.tes)
+  
+  methyl.long$name <- factor(methyl.long$name, levels = selected.tes)
+  
+  pdf(file = paste0("../Figures/images/Methylation_vs_",te.type,"_scatter.pdf"),
+     width = pdf.width*0.0394,
+     height = pdf.height*0.0394)
+  g <- ggplot(data = methyl.long, aes(x = Age, y = value)) +
+      geom_point(size = 0.05) +
+      geom_smooth(method = "lm", se=FALSE, color="red", formula = y ~ x, size = 0.5) +
+      facet_grid(facets = Cohort ~ name, scales = "free", switch = "both") +
+      theme_pubr() +
+      theme(axis.text.x = element_text(size = 5, family = "Helvetica"),
+            axis.text.y = element_text(size = 5, family = "Helvetica"),
+            axis.title.x = element_text(size = 7, family = "Helvetica"),
+            axis.title.y= element_text(size = 7, family = "Helvetica"),
+            strip.text.x = element_text(size = 7, family = "Helvetica"),
+            strip.text.y = element_text(size = 7, family = "Helvetica"),
+            strip.placement = "outside") +
+    ylab("Methylation Levels")
+  print(g)
+  dev.off()
+}
+
+methyl.quartile <- function(methyl.cohort = "GSE56046", exprs.cohort = "GSE56045",
+                            selected.tes = c("LTR", "LINE", "SINE", "Satellite"),
+                            file.prefix = "MESA_TE_Classes", pdf.width=60, pdf.height=40, nrows = 2){
+  
+  # Read TE expressions and select "selected TEs"
+  te_exp <- readRDS(paste0("../Data/TE_Expression/", exprs.cohort, "_TEs_pData.rds"))
+  
+  te_exp <- te_exp %>%
+    dplyr::select(selected.tes)
+  colnames(te_exp) <- paste0("Exprs\n", colnames(te_exp))
+  
+  # Read methylation data and select "selected TEs"
+  methyl_df <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_TE_Final.rds"))
+    
+  methyl_df <- as.data.frame(t(methyl_df)) %>%
+    dplyr::select(selected.tes) 
+  colnames(methyl_df) <- paste0("Methyl\n", colnames(methyl_df))
+  
+  # Read meta and add Age info
+  if (file.exists(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))){
+    methyl_meta <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))
+    # Order meta as methylation df
+    methyl_meta <- methyl_meta[match(methyl_meta$Sample_ID, rownames(methyl_df)),]
+    # Add Age column
+    methyl_df$Age <- methyl_meta$Age
+  } else if (file.exists(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"))){
+    methyl_meta <- read.table(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"), header = T, sep = "\t")
+    # Remove duplicate entries for samples
+    methyl_meta <- methyl_meta[!(duplicated(methyl_meta$Source.Name)),]
+    # Order meta as methylation df
+    if (methyl.cohort == "GSE40279"){
+      methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_source_name.), rownames(methyl_df)),]
+      # Add Age column
+      methyl_df$Age <- methyl_meta$Characteristics..age.y.
+    } else if (methyl.cohort == "GSE56105"){
+      methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_title.), rownames(methyl_df)),]
+      # Add Age column
+      methyl_df$Age <- methyl_meta$Characteristics..age.
+    } else {
+      methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Assay.Name), rownames(methyl_df)),]
+      methyl_df$Age <- methyl_meta$Characteristics.age.
+    }
+  }
+  
+  merged_df <- cbind(te_exp, methyl_df)
+  
+  qplot_list <- list()
+  
+  qplot_list <- lapply(selected.tes, FUN = function(te){
+    plot_df <- merged_df %>% 
+      mutate(quartile = ntile(get(paste0("Exprs\n",te)), n = 4))
+    plot_df$quartile <- as.factor(plot_df$quartile)
+    methyl_q <- plot_df %>% 
+      dplyr::select(c(paste0("Methyl\n",te), "quartile")) %>%
+      tidyr::pivot_longer(cols = paste0("Methyl\n",te))
+    methyl_q$name <- factor(methyl_q$name, levels = paste0("Methyl\n",te))
+    methyl_q$quartile <- plyr::mapvalues(methyl_q$quartile, from = c(1,2,3,4), to = c("Low", "Med", "Med", "High"))
+    
+    # Calculate comparisons
+    comparisons <- compare_means(formula = value ~ quartile, data = methyl_q, group.by = "name") 
+    
+    comparisons$p.signif <- ifelse(comparisons$p <= 0.05 & comparisons$p > 0.01, "*", 
+                                   ifelse(comparisons$p <= 0.01 & comparisons$p > 0.001, "**",
+                                          ifelse(comparisons$p <= 0.001, "***", "ns")))
+    
+    g <- ggplot(data = methyl_q, aes(x = quartile, y = value, group = quartile)) +
+      geom_boxplot(aes(fill = quartile), size = 0.2, outlier.shape = NA) +
+      scale_fill_manual(values = c("#0DC35A", "#FFE100", "#FF4300")) +
+      stat_pvalue_manual(comparisons, label = "p.signif", y.position = max(methyl_q$value)+0.05, 
+                         step.increase = 0.1, step.group.by = "name",
+                         label.size = 1.6, bracket.size = 0.2) +
+      theme_pubr() +
+      theme(axis.text.x = element_text(size = 7, family = "Helvetica"),
+            axis.text.y = element_text(size = 5, family = "Helvetica"),
+            axis.title.x = element_blank(),
+            axis.title.y= element_blank(),
+            strip.text.x = element_blank(),
+            strip.text.y = element_blank(),
+            legend.position = "none") +
+      scale_x_discrete(labels = c("Low", "Med", "High")) +
+      # scale_y_continuous(n.breaks = 3, breaks = c(1.75,2,2.25), limits = c(0.8,2.5)) +
+      xlab("Quartile") +
+      ylab("Methylation Levels") +
+      theme(panel.spacing = unit(1, "cm"))
+    
+    g
+  })
+  
+  allplots <- ggarrange(plotlist = qplot_list, ncol = round(length(selected.tes)/nrows), nrow = nrows)
+  pdf(file = paste0("../Figures/images/", methyl.cohort, "_quartile_", file.prefix, ".pdf"),
+    width = pdf.width*0.0394,
+    height = pdf.height*0.0394)
+  print(allplots)
+  dev.off()
+}
+
+PA.methyl <- function(methyl.cohort = "GSE56046", exprs.cohort = "GSE56045", 
+                      selected.tes = c("LTR", "LINE", "SINE"),
+                      pdf.width=60, pdf.height=40){
+  # Read TE expressions and select "selected TEs"
+  te_exp <- readRDS(paste0("../Data/TE_Expression/", exprs.cohort, "_TEs_pData.rds"))
+  
+  te_exp <- te_exp %>%
+    dplyr::select(selected.tes)
+  colnames(te_exp) <- paste0("Exprs\n", colnames(te_exp))
+  
+  # Read methylation data and select "selected TEs"
+  methyl_df <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_TE_Final.rds"))
+    
+  methyl_df <- as.data.frame(t(methyl_df)) %>%
+    dplyr::select(selected.tes) 
+  colnames(methyl_df) <- paste0("Methyl\n", colnames(methyl_df))
+  
+  # Read meta and add Age info
+  if (file.exists(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))){
+    methyl_meta <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_meta.rds"))
+    # Order meta as methylation df
+    methyl_meta <- methyl_meta[match(methyl_meta$Sample_ID, rownames(methyl_df)),]
+    # Add Age column
+    methyl_df$Age <- methyl_meta$Age
+  } else if (file.exists(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"))){
+    methyl_meta <- read.table(paste0("../Data/Methylation/", methyl.cohort, ".sdrf.txt"), header = T, sep = "\t")
+    # Remove duplicate entries for samples
+    methyl_meta <- methyl_meta[!(duplicated(methyl_meta$Source.Name)),]
+    # Order meta as methylation df
+    if (methyl.cohort == "GSE40279"){
+      methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_source_name.), rownames(methyl_df)),]
+      # Add Age column
+      methyl_df$Age <- methyl_meta$Characteristics..age.y.
+    } else if (methyl.cohort == "GSE56105"){
+      methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Comment..Sample_title.), rownames(methyl_df)),]
+      # Add Age column
+      methyl_df$Age <- methyl_meta$Characteristics..age.
+    } else {
+      methyl_meta <- methyl_meta[match(gsub("_Grn", "", methyl_meta$Assay.Name), rownames(methyl_df)),]
+      methyl_df$Age <- methyl_meta$Characteristics.age.
+    }
+  }
+  
+  merged_df <- cbind(te_exp, methyl_df)
+  
+  pdf(file = paste0("../Figures/images/", exprs.cohort,"_methylVexprs.pdf"),
+    width = pdf.width*0.0394,
+    height = pdf.height*0.0394)
+  g <- GGally::ggpairs(merged_df,
+                       upper = list(continuous = wrap(ggally_cor_alt,
+                                                      method = 'pearson',
+                                                      size = 1.8)),
+                       lower = list(continuous = wrap(lowerFn, point.size = 0.05, size = 0.5)),
+                       diag =  list(continuous = function(...) ggally_densityDiag(...)+theme_pubr())) + 
+    theme(strip.text.x = element_text(size = 5, family = "Helvetica"),
+          strip.text.y = element_text(size = 5, family = "Helvetica"),
+          axis.text.x = element_text(size = 5, family = "Helvetica", angle = 90),
+          axis.text.y = element_text(size = 5, family = "Helvetica"))
+  print(g)
+  dev.off()
+}
+```
+
+# MESA (GSE56045)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr("GSE56045")
+```
+
+## All vs. All
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE56045")
+```
+
+## No TE Classes
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE56045", type = "no_class")
+```
+
+## No TE Families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE56045", type = "no_family")
+```
+
+## Performance Analytics (All vs. All)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=20, fig.height=20}
+PA.all("GSE56045")
+```
+
+## Performance Analytics (TE Classes)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE56045", type = "class")
+```
+
+## Performance Analytics (TE Families)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE56045", type = "family")
+```
+
+# GARP (GSE48556)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr("GSE48556")
+```
+
+## All vs. All
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE48556")
+```
+
+## TE Classes
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE48556", type = "class")
+```
+
+## TE Families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE48556", type = "family")
+```
+
+## Performance Analytics (All vs. All)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE48556")
+```
+
+## Performance Analytics (TE Classes)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE48556", type = "class")
+```
+
+## Performance Analytics (TE Families)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE48556", type = "family")
+```
+
+# GTP (GSE58137)
+Missing IL1A and IL1R1 for inflammaging gene set
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=10}
+te.corr("GSE58137")
+```
+
+## All vs. All
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE58137")
+```
+
+## No TE Classes
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE58137", type = "no_class")
+```
+
+## No TE Families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+te.corr.all("GSE58137", type = "no_family")
+```
+
+## Performance Analytics (All vs. All)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE58137")
+```
+
+## Performance Analytics (TE Classes)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE58137", type = "class")
+```
+
+## Performance Analytics (TE Families)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=12}
+PA.all("GSE58137", type = "family")
+```
+
+# Age distribution all cohorts
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=14, fig.height=8}
+age_df <- setNames(do.call(cbind.data.frame, lapply(lapply(age_list, unlist), 
+        `length<-`, max(lengths(age_list)))), paste0("V", 1:2))
+colnames(age_df) <- names(age_list)
+
+age_df_long <- tidyr::pivot_longer(age_df, cols = 1:length(colnames(age_df)))
+colnames(age_df_long) <- c("Cohort", "Age")
+
+ggplot(age_df_long) +
+  geom_density(aes(x = Age, fill = Cohort, color = Cohort),alpha = 0.1) +
+  theme_minimal()
+```
+
+# Age stats
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=10, fig.height=8}
+age_stats <- rbind(apply(age_df, 2, FUN = function(x)mean(x, na.rm = T)), apply(age_df, 2, FUN = function(x)sd(x, na.rm = T)))
+rownames(age_stats) <- c("Mean", "SD")
+age_stats <- round(age_stats, 2)
+
+DT::datatable(age_stats)
+```
+
+# Bar charts
+## TE Classes
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=12, fig.height=16}
+addline_format <- function(x,...){
+    gsub('\\s','\n',x)
+}
+
+r_bars_long <- tidyr::pivot_longer(r_bars, cols = c("Age", "Inflammatory chemokines":"SASP"))
+p_bars_long <- tidyr::pivot_longer(p_bars, cols = c("Age", "Inflammatory chemokines":"SASP"))
+pr_merged_long <- cbind(r_bars_long[,c("Cohort", "Class", "name", "value")],
+                        p_bars_long[,"value"])
+colnames(pr_merged_long)[3:5] <- c("Set", "r", "p")
+pr_merged_long$Cohort <- plyr::mapvalues(pr_merged_long$Cohort, 
+                                         from = c("E_TABM_1036", "GSE20142", "GSE47729", 
+                                                  "GSE48152", "GSE48556", "GSE56045", 
+                                                  "GSE58137"),
+                                         to = c("DILGOM", "FEHRMANN", "HVH",
+                                                "InCHIANTI", "GARP", "MESA",
+                                                "GTP"))
+pr_merged_long$Class <- factor(pr_merged_long$Class, levels=c("LTR", "LINE", "SINE"))
+
+pdf(file = "../Figures/images/TE_class_bar.pdf",
+     width = 75*0.0394,
+     height = 60*0.0394)
+
+ggplot(data = pr_merged_long, 
+              aes(x = factor(Set, levels = c("Age", "IFN-I", "Inflammatory cytokines", 
+                                             "Inflammatory chemokines","Inflammaging", "SASP", "Senescence")),
+                  y = r, fill = Cohort)) +
+    facet_wrap(facets = ~ Class, nrow = length(unique(pr_merged_long$Class))) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7) +
+    theme_minimal() +
+    xlab("Gene Set") +
+    ylab("r-value") +
+    scale_x_discrete(breaks = c("Age", "IFN-I", "Inflammatory cytokines", 
+                                             "Inflammatory chemokines","Inflammaging", "SASP", "Senescence"),
+                     labels=addline_format(c("Age", "IFN-I", "Inflammatory cytokines", 
+                                             "Inflammatory chemokines","Inflammaging", "SASP", "Senescence"))) +
+    scale_y_continuous(n.breaks = 4) +
+    scale_fill_frontiers() +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          strip.text = element_text(size=5, family = "Helvetica"),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 5, family = "Helvetica"),
+          legend.text = element_blank(),
+          legend.position = "none",
+          legend.title = element_blank()) +
+    geom_text(aes(label = ifelse((pr_merged_long$p <= 0.05) & (pr_merged_long$r < 0), "*", "")),
+              group = pr_merged_long$Set,
+              position = position_dodge(width = 0.7), vjust = 1.1, size = 1.8) +
+    geom_text(aes(label = ifelse((pr_merged_long$p <= 0.05) & (pr_merged_long$r > 0), "*", "")),
+              group = pr_merged_long$Set,
+              position = position_dodge(width = 0.7), vjust = 0.5, size = 1.8)
+dev.off()
+```
+
+## TE Families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=18, fig.height=40}
+cohorts_from <- c("E_TABM_1036", "GSE20142", "GSE47729", "GSE48152", 
+                  "GSE48556", "GSE56045", "GSE58137")
+cohorts_to <- c("DILGOM", "FEHRMANN", "HVH", "InCHIANTI", 
+                "GARP", "MESA","GTP")
+r_bars_long_fam <- tidyr::pivot_longer(r_bars_fam, cols = c("Age", "Inflammatory chemokines":"SASP"))
+p_bars_long_fam <- tidyr::pivot_longer(p_bars_fam, cols = c("Age", "Inflammatory chemokines":"SASP"))
+pr_merged_long_fam <- cbind(r_bars_long_fam[,c("Cohort", "Family", "name", "value")],
+                        p_bars_long_fam[,"value"])
+colnames(pr_merged_long_fam)[3:5] <- c("Set", "r", "p")
+pr_merged_long_fam$Cohort <- plyr::mapvalues(pr_merged_long_fam$Cohort, 
+                                         from = cohorts_from,
+                                         to = cohorts_to)
+pr_merged_long_fam$Family <- as.factor(pr_merged_long_fam$Family)
+pr_merged_long_fam$Family <- factor(pr_merged_long_fam$Family, levels=c("L1", "L2", "ERV1", "ERVL", 
+                                                                "ERVL-MaLR","ERVK", "Alu", "MIR"))
+
+pdf(file = "../Figures/images/TE_family_bar.pdf",
+     width = 75*0.0394,
+     height = 160*0.0394)
+
+ggplot(data = pr_merged_long_fam, 
+              aes(x = factor(Set, levels = c("Age", "IFN-I", "Inflammatory cytokines", 
+                                             "Inflammatory chemokines","Inflammaging", "SASP", "Senescence")),
+                  y = r, fill = Cohort)) +
+    facet_wrap(facets = ~Family, nrow = length(unique(pr_merged_long_fam$Family))) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7) +
+    theme_minimal() +
+    xlab("Gene Set") +
+    ylab("r-value") +
+    scale_x_discrete(breaks = c("Age", "IFN-I", "Inflammatory cytokines", 
+                                             "Inflammatory chemokines","Inflammaging", "SASP", "Senescence"),
+                     labels=addline_format(c("Age", "IFN-I", "Inflammatory cytokines", 
+                                             "Inflammatory chemokines","Inflammaging", "SASP", "Senescence"))) +
+    scale_y_continuous(n.breaks = 4) +
+    scale_fill_frontiers() +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          strip.text = element_text(size=5, family = "Helvetica"),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 5, family = "Helvetica"),
+          legend.position = "none") +
+    geom_text(aes(label = ifelse((pr_merged_long_fam$p <= 0.05) & (pr_merged_long_fam$r < 0), "*", "")),
+              group = pr_merged_long_fam$Set,
+              position = position_dodge(width = 0.7), vjust = 1.1, size = 1.8) +
+    geom_text(aes(label = ifelse((pr_merged_long_fam$p <= 0.05) & (pr_merged_long_fam$r > 0), "*", "")),
+              group = pr_merged_long_fam$Set,
+              position = position_dodge(width = 0.7), vjust = 0.5, size = 1.8)
+dev.off()
+```
+
+# Expression scatter plots
+## MESA (GSE56045)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=18, fig.height=15}
+scatter.all("GSE56045")
+```
+
+## GARP (GSE48556)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=15, fig.height=7.5}
+scatter.all("GSE48556")
+```
+
+## GTP (GSE58137)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=18, fig.height=15}
+scatter.all("GSE58137")
+```
+
+# All cohorts heatmap
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=18, fig.height=18}
+heatmap.all()
+```
+
+## GARP
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=18, fig.height=18}
+heatmap.all(cohorts_list = c("GSE48556"))
+```
+
+## GARP (Families)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=18, fig.height=18}
+heatmap.all(cohorts_list = c("GSE48556"), selection = "family")
+```
+
+## GTP only
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE, fig.width=18, fig.height=18}
+heatmap.all(cohorts_list = c("GSE58137"))
+```
+
+# Save boxplots
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+quartile.all(cohort = "GSE56045", te_class = "LTR")
+quartile.all(cohort = "GSE56045", te_class = "LINE")
+quartile.all(cohort = "GSE56045", te_class = "SINE")
+quartile.all(cohort = "GSE56045", te_class = "Alu")
+quartile.all(cohort = "GSE48556", te_class = "LTR")
+quartile.all(cohort = "GSE48556", te_class = "LINE")
+quartile.all(cohort = "GSE48556", te_class = "SINE")
+quartile.all(cohort = "GSE48556", te_class = "Alu")
+quartile.all(cohort = "GSE58137", te_class = "LTR")
+quartile.all(cohort = "GSE58137", te_class = "LINE")
+quartile.all(cohort = "GSE58137", te_class = "SINE")
+quartile.all(cohort = "GSE58137", te_class = "Alu")
+```
+
+# Probe bar chart
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+class_probes <- read_excel("../Results/missing_genes_230616.xlsx", sheet = "Class Probes")
+colnames(class_probes) <- plyr::mapvalues(colnames(class_probes), 
+                                          from = cohorts_from, to = cohorts_to)
+class_probes <- class_probes %>% 
+  dplyr::filter(Class %in% c("LTR", "LINE", "SINE")) %>%
+  dplyr::select(c("Class", "Original", "MESA", "GARP", "GTP"))
+
+class_probes_long <- tidyr::pivot_longer(class_probes, cols = c("Original", "MESA", "GARP", "GTP"))
+class_probes_long$Class <- factor(class_probes_long$Class, levels=c("LTR", "LINE", "SINE"))
+class_probes_long$name <- factor(class_probes_long$name, levels=c("Original", "MESA", "GARP", "GTP"))
+
+family_probes <- read_excel("../Results/missing_genes_230616.xlsx", sheet = "Family Probes")
+colnames(family_probes) <- plyr::mapvalues(colnames(family_probes), 
+                                          from = cohorts_from, to = cohorts_to)
+family_probes <- family_probes %>% 
+  dplyr::filter(Family %in% c("L1", "L2", "ERV1", "ERVL", "ERVL-MaLR","ERVK", "Alu", "MIR")) %>%
+  dplyr::select(c("Family", "Original", "MESA", "GARP", "GTP"))
+
+family_probes_long <- tidyr::pivot_longer(family_probes, cols = c("Original", "MESA", "GARP", "GTP"))
+family_probes_long$Family <- factor(family_probes_long$Family, levels=c("L1", "L2", "ERV1", "ERVL", 
+                                                                "ERVL-MaLR","ERVK", "Alu", "MIR"))
+colnames(family_probes_long)[1] <- "Class"
+
+# Merge class and family
+merged_bar_long <- rbind(class_probes_long, family_probes_long)
+
+pdf(file = paste0("../Figures/images/bar_class.pdf"),
+        width = 160*0.0394,
+        height = 40*0.0394)
+g <- ggplot(data = merged_bar_long, aes(x = Class, y = value, fill = name)) +
+  geom_bar(position = "dodge" , stat = "identity") +
+  theme_pubr() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 7, family = "Helvetica"),
+        legend.position = "none") +
+  scale_fill_manual(values = c("Original" = "#20854E", "MESA" = "#F0D600", "GARP" = "#D51416", "GTP" = "#F49200"))
+print(g)
+dev.off()
+```
+
+# GSVA heatmap
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+all_tes <- c("LINE", "L1", "L2",
+             "LTR", "ERV1", "ERVL", "ERVL-MaLR","ERVK",
+             "SINE", "Alu", "MIR")
+gsva.heatmap(cohorts_list = c("GSE56045", "GSE48556", "GSE58137"), te_list = all_tes)
+```
+
+# Methylation Bar Charts
+## TE Classes
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.bars(selected.tes = c("LTR", "LINE", "SINE", "Satellite"))
+```
+
+## LTR families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.bars(selected.tes = c("ERV1", "ERVK", "ERVL", "ERVL-MaLR"), te.type = "LTR_Families", 
+            pdf.width = 160, pdf.height = 50)
+```
+
+## SINE and LINE families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.bars(selected.tes = c("Alu", "MIR", "CR1", "L1", "L2"), te.type = "SINE_LINE_Families", 
+            pdf.width = 160, pdf.height = 50)
+```
+
+# Methylation Scatter Plots
+## BSGS & MESA
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.scat(methyl.cohort.list = c("GSE56105", "GSE56046"), 
+            selected.tes = c("LTR", "LINE", "SINE", "Satellite"), 
+            te.type = "TE_Classes", 
+            pdf.width = 80, pdf.height = 50)
+```
+
+## GMPWAR LINE Families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.scat(methyl.cohort.list = c("GSE40279"), 
+            selected.tes = c( "ERVK", "ERV1", "ERVL", "ERVL-MaLR"), 
+            te.type = "GMPWAR_LINE_Families", 
+            pdf.width = 170, pdf.height = 60)
+```
+
+## GMPWAR LTR & SINE Families
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.scat(methyl.cohort.list = c("GSE40279"), 
+            selected.tes = c("Alu", "MIR", "CR1", "L1", "L2"), 
+            te.type = "GMPWAR_LTR_SINE_Families", 
+            pdf.width = 170, pdf.height = 60)
+```
+
+# Quartile boxplots
+## MESA (TE Classes)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.quartile(methyl.cohort = "GSE56046", exprs.cohort = "GSE56045", 
+                selected.tes = c("LTR", "LINE", "SINE", "Satellite"),
+                file.prefix = "TE_Classes", pdf.width=80, pdf.height=70)
+```
+
+## MESA (TE Families)
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+methyl.quartile(methyl.cohort = "GSE56046", exprs.cohort = "GSE56045",
+                selected.tes = c("Alu", "MIR", "CR1", "L1", "L2", "ERVK", "ERV1", "ERVL", "ERVL-MaLR"),
+                file.prefix = "TE_Families", pdf.width=170, pdf.height=170, nrows = 3)
+```
+
+# PA Methylation vs. Expression
+
+```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
+PA.methyl(methyl.cohort = "GSE56046", exprs.cohort = "GSE56045",
+                selected.tes = c("LTR", "LINE", "SINE"),
+                pdf.width=88, pdf.height=88)
+```
