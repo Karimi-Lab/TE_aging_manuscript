@@ -1,5 +1,5 @@
-# TE_aging_manuscript
- Scripts and data for used in the TE Aging Manuscript
+# Expression of Autonomous Retrotransposons Correlates with Biological Aging
+ Scripts and data used in the "Expression of Autonomous Retrotransposons Correlates with Biological Aging" paper. 
 
 ## Additional data required (the folder the file should be put into)
 MESA cohort gene expression RDS file (Gene_Expression): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EePfklf6BYNAiPh_xrss5VkBJsdKhhYBU3zHiNpZ-kvYNQ?e=x51Fa4 <br><br>
