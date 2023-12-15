@@ -1,7 +1,7 @@
 library(readxl)
 
+##### Available TEs #####
 avail_probes <- read.csv("../Data/Methylation/Infinium-HumanMethylation450-BeadChip-array-Probes.csv")
-avail_probes <- avail_probes[!duplicated(avail_probes$TE_Identity),]
 
 for (methyl.cohort in c("GSE56046", "GSE40279", "E-MTAB-7309", "GSE56105")){
   gse <- readRDS(paste0("../Data/Methylation/", methyl.cohort, "_Methylation_TE_Final.rds"))
@@ -42,7 +42,7 @@ openxlsx::writeData(OUTPUT, sheet = "Class Probes", x = pr_class, rowNames = F)
 openxlsx::addWorksheet(OUTPUT, "Family Probes")
 openxlsx::writeData(OUTPUT, sheet = "Family Probes", x = pr_family, rowNames = F)
 
-openxlsx::saveWorkbook(OUTPUT, paste0("../Results/methylation_avail_probes_", format(Sys.Date(), "%y%m%d"),".xlsx"), 
+openxlsx::saveWorkbook(OUTPUT, paste0("../Results/methylation_avail_probes_", format(Sys.Date(), "%y%m%d"),".xlsx"),
                        overwrite = T)
 
 ##### Plot #####
@@ -83,7 +83,7 @@ g <- ggplot(data = merged_bar_long, aes(x = Class, y = value, fill = name)) +
         axis.text.x = element_blank(),
         axis.text.y = element_text(size = 7, family = "Helvetica"),
         legend.position = "none") +
-  scale_fill_manual(values = c("Available" = "#20854E", "GSE56046" = "#00A087", "GSE40279" = "#4CBBD5", 
+  scale_fill_manual(values = c("Available" = "#20854E", "GSE56046" = "#00A087", "GSE40279" = "#4CBBD5",
                                "E-MTAB-7309" = "#3C5488", "GSE56105" = "#E64B35"))
 print(g)
 dev.off()
