@@ -279,143 +279,6 @@ for (l in 1:length(fam)) {
   dev.off()
 }
 
-
-######################### scATAC-seq MUX plot
-setwd("../Data/Single_Cell/scATAC-seq_PBMC/")
-pseudo_class<-readRDS("./pseudo_class.rds")
-pseudo_fam<-readRDS("./pseudo_fam.Rds")
-TE_masker <- read.csv("../Data/Single_Cell/hg38_repeat_masker.gz", header=TRUE, sep="\t")
-TE_masker <- unique(TE_masker[,c("repName","repClass","repFamily")])
-Class_for_comparison<-unique(TE_masker$repClass)
-fam_for_comparison<-unique(TE_masker$repFamily)
-pseudo_class_matrix<-as.matrix(pseudo_class@assays$RNA@counts)
-pseudo_class_metadata<-pseudo_class@meta.data
-pseudo_class_metadata<-pseudo_class_metadata[colnames(pseudo_class_matrix),]
-pseudo_class_matrix_normalized<-pseudo_class_matrix[rownames(pseudo_class_matrix)[which(rownames(pseudo_class_matrix)%in%Class_for_comparison)],]
-pseudo_class_matrix_normalized_done<-matrix(data = NA,nrow = nrow(pseudo_class_matrix_normalized),ncol = ncol(pseudo_class_matrix_normalized))
-rownames(pseudo_class_matrix_normalized_done)<-rownames(pseudo_class_matrix_normalized)
-colnames(pseudo_class_matrix_normalized_done)<-colnames(pseudo_class_matrix_normalized)
-#delete<-data.frame(sum=colSums(pseudo_class_matrix_normalized))
-for (i in 1:ncol(pseudo_class_matrix_normalized)) {
-  pseudo_class_matrix_normalized_done[,i]<-1000000*pseudo_class_matrix_normalized[,i]/(pseudo_class_metadata[i,]$nCount_RNA)
-                                                                               #-as.numeric(delete[i,]))
-}
-
-pseudo_class_matrix_normalized_done<-t(pseudo_class_matrix_normalized_done)
-pseudo_class_metadata<-pseudo_class_metadata[rownames(pseudo_class_matrix_normalized_done),]
-pseudo_class_metadata<-cbind(pseudo_class_metadata,pseudo_class_matrix_normalized_done)
-pseudo_class_metadata$Status<-factor(pseudo_class_metadata$Status,levels = c("young","old"))
-Cell_type<-unique(pseudo_class_metadata$Cell_type)
-class<-unique(rownames(pseudo_class_matrix_normalized))
-for (i in 1:length(Cell_type)) {
-  for (l in 1:length(class)) {
-    tmp<-pseudo_class_metadata[which(pseudo_class_metadata$Cell_type==Cell_type[i]),]
-    ggplot(tmp,aes(x=Status,y=log10(tmp[,class[l]]),color=Status))+
-      stat_boxplot(geom = "errorbar",width=0.2,aes(color=Status))+
-      geom_boxplot(notch = F,width=0.6,outlier.shape = NA)+
-      scale_color_manual(values=c("#999999","#1C769F"))+
-      labs(x = NULL,y = paste0(Cell_type[i],": log10(RPM) class: ",class[l]))+
-      stat_summary(fun="mean",color="black")+
-      geom_jitter(shape=16,position = position_jitter(0.1),color="black",size=3)+
-      stat_compare_means()+
-      theme_classic2()+
-      theme(axis.title.x = element_blank(),
-            axis.ticks.x=element_blank(),
-            axis.title.y = element_text(size = 16, face = "bold"),
-            axis.text.y = element_text(size = 16),
-            legend.text = element_blank(),
-            legend.title = element_blank())
-    ggsave(filename =paste0("./plot/class/",class[l],"/",as.character(Cell_type[i]),".png"),width = 6,height=8)
-  }
-}
-
-################################### fam ####################################
-pseudo_fam_matrix<-as.matrix(pseudo_fam@assays$RNA@counts)
-pseudo_fam_metadata<-pseudo_fam@meta.data
-pseudo_fam_metadata<-pseudo_fam_metadata[colnames(pseudo_fam_matrix),]
-pseudo_fam_matrix_normalized<-pseudo_fam_matrix[rownames(pseudo_fam_matrix)[which(rownames(pseudo_fam_matrix)%in%fam_for_comparison)],]
-pseudo_fam_matrix_normalized_done<-matrix(data = NA,nrow = nrow(pseudo_fam_matrix_normalized),ncol = ncol(pseudo_fam_matrix_normalized))
-rownames(pseudo_fam_matrix_normalized_done)<-rownames(pseudo_fam_matrix_normalized)
-colnames(pseudo_fam_matrix_normalized_done)<-colnames(pseudo_fam_matrix_normalized)
-#delete<-data.frame(sum=colSums(pseudo_fam_matrix_normalized))
-for (i in 1:ncol(pseudo_fam_matrix_normalized)) {
-  pseudo_fam_matrix_normalized_done[,i]<-1000000*pseudo_fam_matrix_normalized[,i]/(pseudo_fam_metadata[i,]$nCount_RNA)
-                                                                           #-as.numeric(delete[i,]))
-}
-pseudo_fam_matrix_normalized_done<-t(pseudo_fam_matrix_normalized_done)
-pseudo_fam_metadata<-pseudo_fam_metadata[rownames(pseudo_fam_matrix_normalized_done),]
-pseudo_fam_metadata<-cbind(pseudo_fam_metadata,pseudo_fam_matrix_normalized_done)
-pseudo_fam_metadata$Status<-factor(pseudo_fam_metadata$Status,levels = c("young","old"))
-Cell_type<-unique(pseudo_fam_metadata$Cell_type)
-fam<-unique(rownames(pseudo_fam_matrix_normalized))
-
-#i=1
-for (i in 1:length(Cell_type)) {
-  for (l in 1:length(fam)) {
-    tmp<-pseudo_fam_metadata[which(pseudo_fam_metadata$Cell_type==Cell_type[i]),]
-    a<-ggplot(tmp,aes(x=Status,y=log10(tmp[,fam[l]]),color=Status))+
-      stat_boxplot(geom = "errorbar",width=0.2,aes(color=Status))+
-      geom_boxplot(notch = F,width=0.6,outlier.shape = NA)+
-      scale_color_manual(values=c("#999999","#1C769F"))+
-      labs(x = NULL,y = paste0(Cell_type[i],": log10(RPM) fam: ",fam[l]))+
-      stat_summary(fun="mean",color="black")+
-      geom_jitter(shape=16, position = position_jitter(0.1),color="black",size=3)+
-      stat_compare_means()+theme_classic2()+
-      theme(axis.title.x = element_blank(),
-            axis.ticks.x=element_blank(),
-            axis.title.y = element_text(size = 16, face = "bold"),
-            axis.text.y = element_text(size = 16),
-            legend.text = element_blank(),
-            legend.title = element_blank())
-  #  ggsave(filename =paste0("./plot/fam/",fam[l],"/",as.character(Cell_type[i]),".png"),width = 6,height=8)
-    }
-}
-
-
-
-for (l in 1:length(fam)) {
-    for (i in 1:length(Cell_type)) {
-    tmp<-pseudo_fam_metadata[which(pseudo_fam_metadata$Cell_type==Cell_type[i]),]
-    a<-ggplot(tmp,aes(x=Status,y=log10(tmp[,fam[l]]),color=Status))+
-      stat_boxplot(geom = "errorbar",width=0.2,aes(color=Status))+
-      geom_boxplot(notch = F,width=0.6,outlier.shape = NA)+
-      scale_color_manual(values=c("#999999","#1C769F"))+
-      labs(x = NULL,y = paste0(Cell_type[i],": log10(RPM) fam: ",fam[l]))+
-      stat_summary(fun="mean",color="black")+
-      geom_jitter(shape=16, position = position_jitter(0.1),color="black",size=3)+
-      stat_compare_means()+theme_classic2()+
-      theme(axis.title.x = element_blank(),
-            axis.ticks.x=element_blank(),
-            axis.title.y = element_text(size = 16, face = "bold"),
-            axis.text.y = element_text(size = 16),
-            legend.text = element_blank(),
-            legend.title = element_blank())
-    #  ggsave(filename =paste0("./plot/fam/",fam[l],"/",as.character(Cell_type[i]),".png"),width = 6,height=8)
-  }
-}
-
-############## summary plot
-for (l in 1:length(class)) {
-  classes<-class[l]
-  pdf(file =paste0("./plot/class/Summarised_",classes,".pdf"),width = 15,height=20)
-  my_Plot_List_class <- lapply(Cell_type,my_Plot_class)
-  pt<-plot_grid(plotlist = my_Plot_List_class, align = "hv", 
-            nrow = 5,ncol = 5)
-  print(pt)
-  dev.off()
-}
-
-for (l in 1:length(fam)) {
-  family<-fam[l]
-  pdf(file =paste0("./plot/fam/Summarised_",family,".pdf"),width = 15,height=20)
-  my_Plot_List_fam <- lapply(Cell_type,my_Plot_fam)
-  pt<-plot_grid(plotlist = my_Plot_List_fam, align = "hv", 
-            nrow = 5,ncol = 5)
-  print(pt)
-  dev.off()
-}
-
-
 ########################### Inflammation ########################
 setwd("../Data/Single_Cell/Inflammatory_analysis/")
 pseudo_scRNA<-readRDS("../Data/Single_Cell/scRNASeq-PBMC/pseudo_class.rds")
@@ -576,13 +439,13 @@ for (z in 1:length(Lists)) {
   }
 }
 
-######################################## Japanese cohort ##################################
-setwd("../Data/Single_Cell/Japanese")
+######################################## Supercentenarian cohort ##################################
+setwd("../Data/Single_Cell/Supercentenarian")
 library("data.table")
 library("Matrix")
 library("Seurat")
 
-mat <- fread("../Data/Single_Cell/Japanese/01.UMI.txt")
+mat <- fread("../Data/Single_Cell/Supercentenarian/01.UMI.txt")
 setDF(mat)
 # Set the barcodes as the row names.
 rownames(mat) <- mat[[1]]
@@ -591,7 +454,7 @@ mat[[1]] <- NULL
 mat <- as(t(as.matrix(mat)), "sparseMatrix")
 # Create the Seurat object.
 seu <- CreateSeuratObject(counts=t(mat))
-Cell_Barcodes <- read_delim("Japanese/03.Cell.Barcodes.txt", 
+Cell_Barcodes <- read_delim("Supercentenarian/03.Cell.Barcodes.txt", 
                             delim = "\t", escape_double = FALSE, 
                             col_names = FALSE, trim_ws = TRUE)
 colnames(Cell_Barcodes)<-c("cell_barcode","patient","group")
@@ -600,9 +463,9 @@ rownames(Cell_Barcodes)<-Cell_Barcodes$cell_barcode
 Cell_Barcodes<-Cell_Barcodes[colnames(as.matrix(seu@assays$RNA@counts)),]
 seu<-AddMetaData(seu,Cell_Barcodes)
 seu@meta.data
-#saveRDS(seu,"./Japanese/Japanese_scRNA.rds")
+#saveRDS(seu,"./Supercentenarian/Supercentenarian_scRNA.rds")
 
-seu<-readRDS("Japanese_scRNA.rds")
+seu<-readRDS("Supercentenarian_scRNA.rds")
 View(seu@meta.data)
 clusters <- read_csv("clusters.csv")
 clusters<-as.data.frame(clusters)
@@ -615,7 +478,7 @@ for (i in unique(clusters$Cluster)) {
 seu<-AddMetaData(seu,clusters)
 seu@meta.data$cell_barcode
 View(seu@meta.data)
-#saveRDS(seu,"Japanese_scRNA.rds")
+#saveRDS(seu,"Supercentenarian_scRNA.rds")
 
 pseudo_class<-readRDS("./pseudo_class.Rds")
 pseudo_fam<-readRDS("./pseudo_fam.Rds")
@@ -803,8 +666,8 @@ for (l in 1:length(fam)) {
 }
 
 ########################### Inflammation ########################
-setwd("../Data/Single_Cell/Japanese/Inflammatory_analysis/")
-pseudo_scRNA<-readRDS("../Data/Single_Cell/Japanese/pseudo_class.Rds")
+setwd("../Data/Single_Cell/Supercentenarian/Inflammatory_analysis/")
+pseudo_scRNA<-readRDS("../Data/Single_Cell/Supercentenarian/pseudo_class.Rds")
 #pseudo_scATAC<-readRDS("../Data/Single_Cell/scATAC-seq_PBMC/pseudo_class.rds")
 TE_masker <- read.csv("../Data/Single_Cell/hg38_repeat_masker.gz", header=TRUE, sep="\t")
 TE_masker <- unique(TE_masker[,c("repName","repClass","repFamily")])
@@ -866,8 +729,8 @@ for (z in 1:length(Lists)) {
   Low_inflammatory<-rownames(scoredf[which(scoredf$TotalScore<median(scoredf$TotalScore)),])
   paste0("High: ",High_inflammatory)
   paste0("Low: ",Low_inflammatory)
-  pseudo_class<-readRDS("../Data/Single_Cell/Japanese/pseudo_class.rds")
-  pseudo_fam<-readRDS("../Data/Single_Cell/Japanese/pseudo_fam.Rds")
+  pseudo_class<-readRDS("../Data/Single_Cell/Supercentenarian/pseudo_class.rds")
+  pseudo_fam<-readRDS("../Data/Single_Cell/Supercentenarian/pseudo_fam.Rds")
   TE_masker <- read.csv("../Data/Single_Cell/hg38_repeat_masker.gz", header=TRUE, sep="\t")
   TE_masker <- unique(TE_masker[,c("repName","repClass","repFamily")])
   Class_for_comparison<-unique(TE_masker$repClass)
