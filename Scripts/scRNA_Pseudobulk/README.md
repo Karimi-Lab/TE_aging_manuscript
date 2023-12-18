@@ -1,6 +1,6 @@
 # Alignment and Pseudobulking
 
-![Overview of pipeline](CML_seurat_scTE_pipeline.drawio.jpg)
+![Overview of pipeline](CML_seurat_scTE_pipeline.jpg)
 
 1. Raw fastq files from the 10X were aligned using cellranger:
 
