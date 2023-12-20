@@ -6,7 +6,8 @@ Scripts and data used in the "Expression of Autonomous Retrotransposons Correlat
 ## How to use the scripts
 generate_singscores.R: Steps needed to generate singscsores from Aging-related gene sets using Illumina HumanHT-12 v4. <br>
 methylation_avail_probes.R: Check Illumina Infinium Human-Methylation probe set in used methylation datasets. Used to generate _Supplementary Figure 1b_. <br>
-scRNA_analysis.R: 
+scRNA_analysis.R: Steps needed to run the scRNA analysis and generate related figures.
+plots.Rmd: Steps needed to run the statisctical analyses and generate related plots and figures.
 
 ## Additional data required (the folder the file should be put into)
 MESA cohort gene expression RDS file (Gene_Expression): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EePfklf6BYNAiPh_xrss5VkBJsdKhhYBU3zHiNpZ-kvYNQ?e=x51Fa4 <br><br>
