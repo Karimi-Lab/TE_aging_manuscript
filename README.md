@@ -1,5 +1,5 @@
-# Expression of Autonomous Retrotransposons Correlates with Biological Aging
-Scripts and data used in the "Expression of Autonomous Retrotransposons Correlates with Biological Aging" paper. 
+# Aging manuscript (to be updated with actual title)
+Scripts and data used in the manuscript. 
 
 <img width="1246" alt="Screenshot 2023-12-15 at 15 31 46" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/03ae60ec-0969-4aff-b3be-876b67948210">
 
