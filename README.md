@@ -13,13 +13,13 @@ _plots.Rmd_: Steps needed to run the statisctical analyses and generate related 
 
 <img width="628" alt="Screenshot 2023-12-22 at 10 27 02" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/50549c21-b9e1-4710-add3-59d234f518ed">
 
-Run the "Probe bar chart" chunk. The necessary file _"missing_genes_231221.xlsx"_ is created by running the _generate_singscores.R_ script. Legend and labels were added manually. <br>
+Run the "Probe bar chart" chunk in _plots.Rmd_. The necessary file _"missing_genes_231221.xlsx"_ is created by running the _generate_singscores.R_ script. Legend and labels were added manually. <br>
 
 ### Generate boxplots split by gene set score quartiles for different cohorts and TEs (_Supp. Fig. 6-7_)
 
 <img width="611" alt="Screenshot 2023-12-22 at 10 37 17" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/ecd0bc6d-036c-4090-920f-7d879c3c75a7">
 
-The _"quartile.all"_ function takes cohort and TE class/family as parameters.
+The _"quartile.all"_ function takes cohort and TE class/family as parameters (_plots.Rmd_).
 
 ```
 quartile.all(cohort = "GSE48556", te_class = "LTR")
