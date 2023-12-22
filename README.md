@@ -4,12 +4,12 @@ Scripts and data used in the manuscript.
 <img width="1246" alt="Screenshot 2023-12-15 at 15 31 46" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/03ae60ec-0969-4aff-b3be-876b67948210">
 
 ## How to use the scripts
-[_generate_singscores.R_](Scripts/generate_singscores.R): Steps needed to generate singscsores from Aging-related gene sets using Illumina HumanHT-12 v4. <br>
-[_methylation_avail_probes.R_](Scripts/methylation_avail_probes.): Check Illumina Infinium Human-Methylation probe set in used methylation datasets. Used to generate _Supplementary Figure 1b_. <br>
-[_scRNA_analysis.R_](Scripts/scRNA_analysis.R): Steps needed to run the scRNA analysis and generate related figures. <br>
-[_plots.Rmd_](Scripts/plots.Rmd): Steps needed to run the statisctical analyses and generate related plots and figures. <br><br>
+[generate_singscores.R](Scripts/generate_singscores.R): Steps needed to generate singscsores from Aging-related gene sets using Illumina HumanHT-12 v4. <br>
+[methylation_avail_probes.R](Scripts/methylation_avail_probes.): Check Illumina Infinium Human-Methylation probe set in used methylation datasets. Used to generate _Supplementary Figure 1b_. <br>
+[scRNA_analysis.R](Scripts/scRNA_analysis.R): Steps needed to run the scRNA analysis and generate related figures. <br>
+[plots.Rmd](Scripts/plots.Rmd): Steps needed to run the statisctical analyses and generate related plots and figures. <br><br>
 
-The scripts necessary to convert scRNA data to pseudo-bulk RNA for RTE classes and families can be found under _Scripts/scRNA_Pseudobulk_. 
+The scripts necessary to convert scRNA data to pseudo-bulk RNA for RTE classes and families can be found under [Scripts/scRNA_Pseudobulk](Scripts/scRNA_Pseudobulk). 
 
 ## Example figure generation
 ### Generate gene expression probe availability bars (_Supp. Fig. 1a_)
