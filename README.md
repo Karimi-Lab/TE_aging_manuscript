@@ -19,7 +19,7 @@ Run the "Probe bar chart" chunk in _plots.Rmd_. The necessary file _"missing_gen
 
 <img width="611" alt="Screenshot 2023-12-22 at 10 37 17" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/ecd0bc6d-036c-4090-920f-7d879c3c75a7">
 
-The _"quartile.all"_ function takes cohort and TE class/family as parameters (_plots.Rmd_).
+The _"quartile.all"_ function takes cohort and TE class/family as parameters (_plots.Rmd_). For example, to generate the plot for GARP cohort (GSE48556) and TE class LTR, use the following code.
 
 ```
 quartile.all(cohort = "GSE48556", te_class = "LTR")
