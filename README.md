@@ -25,7 +25,7 @@ The _"quartile.all"_ function takes cohort and TE class/family as parameters (_p
 quartile.all(cohort = "GSE48556", te_class = "LTR")
 ```
 
-### Generate GSVA heatmap different cohorts and TEs
+### Generate GSVA heatmap different cohorts and TEs (_Fig. 3a_)
 
 <img width="681" alt="Screenshot 2023-12-22 at 11 31 46" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/03673c5a-d021-4e6c-b331-09285fab4374">
 
