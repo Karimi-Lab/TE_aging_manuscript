@@ -27,6 +27,13 @@ The _"quartile.all"_ function takes cohort and TE class/family as parameters (_p
 quartile.all(cohort = "GSE48556", te_class = "LTR")
 ```
 
+### Generate boxplots comparing Control vs. Centenarian groups for gene set scores (_Supp. Fig. 13-15_)
+
+<img width="644" alt="Screenshot 2023-12-22 at 12 39 09" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/2245907e-b46e-4601-acc5-8e191ee0fdbd">
+
+The "Supercentenarian cohort" part in _scRNA_analysis.R_. Creates both individual plots for cell types and a "summary" plot combining all cell types in a single pdf (Summarised_<TE>.pdf). Individual plots will be found in Data > Single_Cell > Supercentenarian > Inflammatory_analysis > plot > class/fam > _TE Class_ > _Cell Type_.pdf <br>
+If you encounter an error when saving the file, you may need to create the appropriate subfolders manually.
+
 ### Generate GSVA heatmap different cohorts and TEs (_Fig. 3a_)
 
 <img width="681" alt="Screenshot 2023-12-22 at 11 31 46" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/03673c5a-d021-4e6c-b331-09285fab4374">
