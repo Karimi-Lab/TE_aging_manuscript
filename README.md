@@ -15,6 +15,16 @@ _plots.Rmd_: Steps needed to run the statisctical analyses and generate related 
 
 Run the "Probe bar chart" chunk. The necessary file _"missing_genes_231221.xlsx"_ is created by running the _generate_singscores.R_ script. Legend and labels were added manually. <br>
 
+### Generate boxplots split by gene set score quartiles for different cohorts and TEs (_Supp. Fig. 6-7_)
+
+<img width="611" alt="Screenshot 2023-12-22 at 10 37 17" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/ecd0bc6d-036c-4090-920f-7d879c3c75a7">
+
+The _"quartile.all"_ function takes cohort and TE class/family as parameters.
+
+```
+quartile.all(cohort = "GSE48556", te_class = "LTR")
+```
+
 ## Additional data required (the folder the file should be put into)
 MESA cohort gene expression RDS file (Gene_Expression): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EePfklf6BYNAiPh_xrss5VkBJsdKhhYBU3zHiNpZ-kvYNQ?e=x51Fa4 <br><br>
 hg38 RepeatMasker file (Single_Cell): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EZFfPw8xHllBs3-5flzFExUBpZtOdGs5L_CS959mVZ5aaw?e=SiRRh2 <br><br>
