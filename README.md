@@ -27,7 +27,7 @@ The _"quartile.all"_ function takes cohort and TE class/family as parameters (_p
 quartile.all(cohort = "GSE48556", te_class = "LTR")
 ```
 
-### Generate boxplots comparing Control vs. Centenarian groups for gene set scores (_Supp. Fig. 13-15_)
+### Generate boxplots comparing Control vs. Centenarian groups for gene set scores (_Supp. Fig. 13_)
 
 <img width="644" alt="Screenshot 2023-12-22 at 12 39 09" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/2245907e-b46e-4601-acc5-8e191ee0fdbd">
 
