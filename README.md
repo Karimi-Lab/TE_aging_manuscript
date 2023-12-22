@@ -25,6 +25,12 @@ The _"quartile.all"_ function takes cohort and TE class/family as parameters (_p
 quartile.all(cohort = "GSE48556", te_class = "LTR")
 ```
 
+### Generate cell-type specific boxplots of RTE expression vs. age for PBMC scRNA-seq cohorts (_Fig. 5a-f_)
+
+<img width="675" alt="Screenshot 2023-12-22 at 11 01 14" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/9a534d2d-6133-463d-b048-35e819ad0ed8">
+
+The "Inflammation" part in _scRNA_analysis.R_. Creates both individual plots for cell types and a "summary" plot combining all cell types in a single pdf (Summarised_<Gene_Set>_<TE>.pdf). Individual plots will be found in Data > Single_Cell > Inflammatory_analysis > plot > class/fam > <Cell Type>.pdf
+
 ## Additional data required (the folder the file should be put into)
 MESA cohort gene expression RDS file (Gene_Expression): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EePfklf6BYNAiPh_xrss5VkBJsdKhhYBU3zHiNpZ-kvYNQ?e=x51Fa4 <br><br>
 hg38 RepeatMasker file (Single_Cell): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EZFfPw8xHllBs3-5flzFExUBpZtOdGs5L_CS959mVZ5aaw?e=SiRRh2 <br><br>
