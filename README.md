@@ -5,12 +5,13 @@ Scripts and data used in the manuscript.
 
 ## How to use the scripts
 [_generate_singscores.R_](Scripts/generate_singscores.R): Steps needed to generate singscsores from Aging-related gene sets using Illumina HumanHT-12 v4. <br>
-_methylation_avail_probes.R_: Check Illumina Infinium Human-Methylation probe set in used methylation datasets. Used to generate _Supplementary Figure 1b_. <br>
-_scRNA_analysis.R_: Steps needed to run the scRNA analysis and generate related figures. <br>
-_plots.Rmd_: Steps needed to run the statisctical analyses and generate related plots and figures. <br><br>
+[_methylation_avail_probes.R_](Scripts/methylation_avail_probes.): Check Illumina Infinium Human-Methylation probe set in used methylation datasets. Used to generate _Supplementary Figure 1b_. <br>
+[_scRNA_analysis.R_](Scripts/scRNA_analysis.R): Steps needed to run the scRNA analysis and generate related figures. <br>
+[_plots.Rmd_](Scripts/plots.Rmd): Steps needed to run the statisctical analyses and generate related plots and figures. <br><br>
 
 The scripts necessary to convert scRNA data to pseudo-bulk RNA for RTE classes and families can be found under _Scripts/scRNA_Pseudobulk_. 
 
+## Example figure generation
 ### Generate gene expression probe availability bars (_Supp. Fig. 1a_)
 
 <img width="628" alt="Screenshot 2023-12-22 at 10 27 02" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/50549c21-b9e1-4710-add3-59d234f518ed">
