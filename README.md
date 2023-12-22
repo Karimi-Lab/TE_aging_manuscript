@@ -13,7 +13,7 @@ _plots.Rmd_: Steps needed to run the statisctical analyses and generate related 
 
 <img width="628" alt="Screenshot 2023-12-22 at 10 27 02" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/50549c21-b9e1-4710-add3-59d234f518ed">
 
-Run the "Probe bar chart" chunk. The necessary file _"missing_genes_231221.xlsx"_ is created by running the _generate_singscores.R_ script. <br>
+Run the "Probe bar chart" chunk. The necessary file _"missing_genes_231221.xlsx"_ is created by running the _generate_singscores.R_ script. Legend and labels were added manually. <br>
 
 ```
 cohorts_from <- c("GSE48556", "GSE56045", "GSE58137")
