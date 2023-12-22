@@ -25,6 +25,20 @@ The _"quartile.all"_ function takes cohort and TE class/family as parameters (_p
 quartile.all(cohort = "GSE48556", te_class = "LTR")
 ```
 
+### Generate GSVA heatmap different cohorts and TEs
+
+<img width="681" alt="Screenshot 2023-12-22 at 11 31 46" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/03673c5a-d021-4e6c-b331-09285fab4374">
+
+The _"gsva.heatmap"_ function takes a cohort list and TE class/family list as parameters (_plots.Rmd_).
+
+```
+c("LINE", "L1", "L2",
+  "LTR", "ERV1", "ERVL", "ERVL-MaLR","ERVK",
+  "SINE", "Alu", "MIR")
+
+gsva.heatmap(cohorts_list = c("GSE56045", "GSE48556", "GSE58137"), te_list = all_tes)
+```
+
 ### Generate cell-type specific boxplots of RTE expression vs. age for PBMC scRNA-seq cohorts (_Fig. 5a-f_)
 
 <img width="675" alt="Screenshot 2023-12-22 at 11 01 14" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/9a534d2d-6133-463d-b048-35e819ad0ed8">
