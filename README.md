@@ -9,6 +9,11 @@ _methylation_avail_probes.R_: Check Illumina Infinium Human-Methylation probe se
 _scRNA_analysis.R_: Steps needed to run the scRNA analysis and generate related figures. <br>
 _plots.Rmd_: Steps needed to run the statisctical analyses and generate related plots and figures.
 
+### Generate gene expression probe availability bars (_Supp. Fig. 1a_)
+
+<img width="628" alt="Screenshot 2023-12-22 at 10 27 02" src="https://github.com/Karimi-Lab/TE_aging_manuscript/assets/25477052/50549c21-b9e1-4710-add3-59d234f518ed">
+
+
 ## Additional data required (the folder the file should be put into)
 MESA cohort gene expression RDS file (Gene_Expression): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EePfklf6BYNAiPh_xrss5VkBJsdKhhYBU3zHiNpZ-kvYNQ?e=x51Fa4 <br><br>
 hg38 RepeatMasker file (Single_Cell): https://emckclac-my.sharepoint.com/:u:/g/personal/k2140993_kcl_ac_uk/EZFfPw8xHllBs3-5flzFExUBpZtOdGs5L_CS959mVZ5aaw?e=SiRRh2 <br><br>
