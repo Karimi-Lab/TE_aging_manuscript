@@ -44,6 +44,8 @@ library(org.Hs.eg.db)
 library(fmsb)
 ```
 
+# PLOT FUNCTIONS
+
 ```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
 # Define TE types for annotation
 te_anno <- data.frame(Feature = c("LTR", "LINE", "SINE", 
@@ -1736,7 +1738,12 @@ quartile.all(cohort = "GSE58137", te_class = "Alu")
 # Probe bar chart
 
 ```{r,echo=F, eval=T, cache=F, message=F, warning=FALSE}
-class_probes <- read_excel("../Results/missing_genes_230616.xlsx", sheet = "Class Probes")
+cohorts_from <- c("E_TABM_1036", "GSE20142", "GSE47729", "GSE48152", 
+                  "s", "GSE56045", "GSE58137")
+cohorts_to <- c("DILGOM", "FEHRMANN", "HVH", "InCHIANTI", 
+                "GARP", "MESA","GTP")
+
+class_probes <- read_excel("../Results/missing_genes_231221.xlsx", sheet = "Class Probes")
 colnames(class_probes) <- plyr::mapvalues(colnames(class_probes), 
                                           from = cohorts_from, to = cohorts_to)
 class_probes <- class_probes %>% 
@@ -1747,7 +1754,7 @@ class_probes_long <- tidyr::pivot_longer(class_probes, cols = c("Original", "MES
 class_probes_long$Class <- factor(class_probes_long$Class, levels=c("LTR", "LINE", "SINE"))
 class_probes_long$name <- factor(class_probes_long$name, levels=c("Original", "MESA", "GARP", "GTP"))
 
-family_probes <- read_excel("../Results/missing_genes_230616.xlsx", sheet = "Family Probes")
+family_probes <- read_excel("../Results/missing_genes_231221.xlsx", sheet = "Family Probes")
 colnames(family_probes) <- plyr::mapvalues(colnames(family_probes), 
                                           from = cohorts_from, to = cohorts_to)
 family_probes <- family_probes %>% 

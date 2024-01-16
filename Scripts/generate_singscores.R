@@ -10,7 +10,6 @@ library(edgeR)
 library(biomaRt)
 library(GSEABase)
 library(illuminaHumanv4.db)
-library(illuminaHumanv3.db)
 library(limma)
 
 # Read Biomart annotations to get the gene lengths necessary for FPKM conversion
@@ -33,19 +32,6 @@ gene_annotations$length <- gene_annotations$end_position - gene_annotations$star
 #   # Get the first one
 #   xx[[1]]
 # }
-# 
-# x3 <- illuminaHumanv3SYMBOL
-# # Get the probe identifiers that are mapped to a gene symbol
-# mapped_probes <- mappedkeys(x3)
-# # Convert to a list
-# xx3 <- as.list(x3[mapped_probes])
-# if(length(xx3) > 0) {
-#   # Get the SYMBOL for the first five probes
-#   xx3[1:5]
-#   # Get the first one
-#   xx3[[1]]
-# }
-
 
 # Load gene sets 
 read_excel_allsheets <- function(filename, tibble = FALSE) {
@@ -132,6 +118,8 @@ for (rds_file in list.files("../Data/Gene_Expression/",
                          paste0("../Results/", strsplit(rds_file, split = "\\.")[[1]][1], "_", format(Sys.Date(), "%y%m%d"), ".xlsx"),
                          overwrite = T)
 }
+
+avail_probes <- avail_probes[!duplicated(avail_probes[c("probe_ID","Class","Family")]),]
 
 pr_class <- as.data.frame(lapply(colnames(avail_probes)[7:18],
                                  FUN = function(x){aggregate(avail_probes[,x],

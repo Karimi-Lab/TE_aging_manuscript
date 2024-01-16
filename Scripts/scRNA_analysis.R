@@ -72,32 +72,6 @@ pseudo_fam$Status<-"young"
 pseudo_fam@meta.data[which(pseudo_fam@meta.data$Sample_ID%in%old_sample),]$Status<-"old"
 saveRDS(pseudo_fam,"./pseudo_fam.rds")
 
-
-
-##scATAC-seq #####
-setwd("../Data/Single_Cell/scATAC-seq_PBMC/")
-pseudo_class<-readRDS("./pseudo_class.Rds")
-pseudo_fam<-readRDS("./pseudo_fam.Rds")
-##class
-unique(pseudo_class$Sample_ID)
-A<-pseudo_class@meta.data
-#write.table(A,file = "./pseudo_class_metadata.txt",sep="\t",quote = F)
-pseudo_class_metadata <- read_delim("pseudo_class_metadata.txt", 
-                                   delim = "\t", escape_double = FALSE, 
-                                   trim_ws = TRUE)
-pseudo_class_metadata<-as.data.frame(pseudo_class_metadata)
-rownames(pseudo_class_metadata)<-pseudo_class_metadata$...1
-pseudo_class_metadata<-pseudo_class_metadata[,-1]
-pseudo_class@meta.data<-pseudo_class_metadata
-
-young_sample<-c("A06", "A08", "A10", "A11" ,"A12", "A18" ,"A20" ,"A21" ,"A23" ,"A24" ,"A26")
-old_sample<-c("D03", "D15", "D22" ,"D24", "E04" ,"E05", "E08" ,"E10", "E16" ,"E17")
-pseudo_class$Status<-NA
-pseudo_class$Status<-"young"
-pseudo_class@meta.data[which(pseudo_class@meta.data$Sample_ID%in%old_sample),]$Status<-"old"
-# saveRDS(pseudo_class,"./pseudo_class.rds")
-
-
 ##fam
 unique(pseudo_fam$Sample_ID)
 A<-pseudo_fam@meta.data
@@ -113,7 +87,6 @@ pseudo_fam$Status<-NA
 pseudo_fam$Status<-"young"
 pseudo_fam@meta.data[which(pseudo_fam@meta.data$Sample_ID%in%old_sample),]$Status<-"old"
 # saveRDS(pseudo_fam,"./pseudo_fam.rds")
-
 
 ############### scRNA-seq MUX plot
 setwd("../Data/Single_Cell/scRNASeq-PBMC/")
@@ -168,7 +141,7 @@ ggsave(paste0("./plot/class/",class[l],"/",as.character(Cell_type[i]),".png"),wi
 }
 }
 
-################################### fam
+### fam
 pseudo_fam_matrix<-as.matrix(pseudo_fam@assays$RNA@counts)
 pseudo_fam_metadata<-pseudo_fam@meta.data
 pseudo_fam_metadata<-pseudo_fam_metadata[colnames(pseudo_fam_matrix),]
